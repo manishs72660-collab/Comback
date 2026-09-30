@@ -3,7 +3,7 @@ import axios from "axios";
 export const AUTH_EVENT = "comeback:logged-out";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000",
+  baseURL: import.meta.env.VITE_API_URL || "https://comback-u5j5.onrender.com/",
   withCredentials: true, // send the httpOnly auth cookies
 });
 
