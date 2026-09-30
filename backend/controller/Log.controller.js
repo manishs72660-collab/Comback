@@ -2,13 +2,13 @@ const mongoose = require("mongoose");
 
 const Routine = require("../models/Routine.models.js");
 const DailyLog = require("../models/Dailylog.models.js");
-const handleError = require("../utils/handleError.js");
+const handleError = require("../utils/Handleerror.js");
 const {
   isValidDateString,
   todayString,
   addDays,
   diffDays,
-} = require("../utils/date.js");
+} = require("../utils/Date.js");
 const { getDayView, buildSummaries } = require("../service/Routine.service.js");
 
 const MAX_HISTORY_DAYS = 366;

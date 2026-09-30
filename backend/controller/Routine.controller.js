@@ -2,8 +2,8 @@ const mongoose = require("mongoose");
 
 const Routine = require("../models/Routine.models.js");
 const DailyLog = require("../models/Dailylog.models.js");
-const handleError = require("../utils/handleError.js");
-const { isValidDateString, todayString } = require("../utils/date.js");
+const handleError = require("../utils/Handleerror.js");
+const { isValidDateString, todayString } = require("../utils/Date.js");
 
 const ALLOWED_FIELDS = [
   "title",

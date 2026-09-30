@@ -9,7 +9,7 @@ const client = require("./config/redis");
 const main = require("./config/db");
 
 const authRouter = require("./routes/auth.routes");
-const routineRouter = require("./routes/routine.routes");
+const routineRouter = require("./routes/Routine.routes");
 const logRouter = require("./routes/Log.routes");
 const dashboardRouter = require("./routes/Dashboard.routes");
 

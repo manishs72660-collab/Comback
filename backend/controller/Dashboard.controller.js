@@ -1,5 +1,5 @@
-const handleError = require("../utils/handleError.js");
-const { isValidDateString, todayString, addDays } = require("../utils/date.js");
+const handleError = require("../utils/Handleerror.js");
+const { isValidDateString, todayString, addDays } = require("../utils/Date.js");
 const {
   getDayView,
   buildSummaries,

@@ -1,6 +1,6 @@
 const Routine = require("../models/Routine.models.js");
 const DailyLog = require("../models/Dailylog.models.js");
-const { dayOfWeek, dateRange } = require("../utils/date.js");
+const { dayOfWeek, dateRange } = require("../utils/Date.js");
 
 // Does this routine apply on the given date?
 const isScheduledOn = (routine, date) => {
