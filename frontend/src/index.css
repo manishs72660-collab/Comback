@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-paper-100 font-sans text-ink antialiased dark:bg-night-900 dark:text-paper-100;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+  }
+  :focus-visible {
+    outline: 2px solid theme("colors.brand.500");
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: theme("colors.hi.400");
+    color: theme("colors.ink");
+  }
+}
+
+@layer components {
+  .surface {
+    @apply rounded-2xl border border-ink/10 bg-white shadow-lift dark:border-white/10 dark:bg-night-800 dark:shadow-none;
+  }
+  .muted {
+    @apply text-ink/60 dark:text-white/55;
+  }
+  .field-label {
+    @apply text-sm font-semibold;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-400;
+  }
+  .btn-soft {
+    @apply bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-white/10 dark:text-white dark:hover:bg-white/15;
+  }
+  .btn-danger {
+    @apply bg-rose-600 text-white hover:bg-rose-700;
+  }
+  .icon-btn {
+    @apply grid h-9 w-9 place-items-center rounded-xl text-ink/55 transition-colors hover:bg-ink/5 hover:text-ink dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white;
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink/15 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-ink/35 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 dark:border-white/15 dark:bg-night-700 dark:placeholder:text-white/30;
+  }
+}
