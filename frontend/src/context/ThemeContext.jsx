@@ -18,6 +18,7 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.dataset.theme = theme;
     try {
       localStorage.setItem("theme", theme);
     } catch {

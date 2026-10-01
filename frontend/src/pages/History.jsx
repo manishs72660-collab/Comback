@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -8,8 +7,10 @@ import { logApi } from "../api";
 import { errorMessage } from "../api/axios";
 import DayBar from "../components/DayBar.jsx";
 import EmptyState from "../components/EmptyState.jsx";
+import Reveal from "../components/Reveal.jsx";
 import RoutineCard from "../components/RoutineCard.jsx";
 import { Spinner } from "../components/Spinner.jsx";
+import StatusDot from "../components/StatusDot.jsx";
 import { STATUS } from "../utils/constants.jsx";
 import { addDays, formatLong, isDateString, monthLabel, parseDate, toDateString, todayString } from "../utils/date.js";
 
@@ -126,125 +127,146 @@ export default function History() {
 
   const future = selected > today;
 
+  const marked = ["completed", "partial", "missed", "pending"];
+
+  // tile style per day status
+  const TILE = {
+    completed: "bg-accent font-semibold text-[#0c0c0d]",
+    partial: "bg-accent/30",
+    missed: "border border-dashed border-ink/25 text-muted",
+    pending: "bg-ink/10",
+    none: "text-muted",
+    upcoming: "text-muted",
+  };
+
+  const stats = [
+    { key: "completed", label: "Completed", value: monthStats.completed },
+    { key: "partial", label: "Partly done", value: monthStats.partial },
+    { key: "missed", label: "Missed", value: monthStats.missed },
+  ];
+
   return (
-    <div className="space-y-7">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">History</h1>
-          <p className="mt-2 muted">Pick any day to see what you did, or fix what you forgot to tick.</p>
-        </div>
-        <dl className="flex gap-8 text-sm">
+    <div className="space-y-6">
+      <Reveal>
+        <header className="flex flex-wrap items-end justify-between gap-5">
           <div>
-            <dt className="muted">Completed</dt>
-            <dd className="font-display text-xl font-semibold">{monthStats.completed}</dd>
+            <h1 className="page-title">{monthLabel(cursor.year, cursor.month)}</h1>
+            <p className="mt-3 muted">Pick any day to see what you did, or fix what you forgot to tick.</p>
           </div>
-          <div>
-            <dt className="muted">Partly done</dt>
-            <dd className="font-display text-xl font-semibold">{monthStats.partial}</dd>
+          <div className="flex items-center gap-1 rounded-full border border-line bg-panel p-1 shadow-card">
+            <button type="button" className="icon-btn" onClick={() => shiftMonth(-1)} aria-label="Previous month">
+              <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
+            </button>
+            <button type="button" className="rounded-full px-4 py-1.5 text-sm font-medium transition-colors hover:bg-panel2" onClick={goToday}>
+              Today
+            </button>
+            <button type="button" className="icon-btn" onClick={() => shiftMonth(1)} aria-label="Next month">
+              <ChevronRight className="h-5 w-5" strokeWidth={1.75} />
+            </button>
           </div>
-          <div>
-            <dt className="muted">Missed</dt>
-            <dd className="font-display text-xl font-semibold">{monthStats.missed}</dd>
-          </div>
+        </header>
+      </Reveal>
+
+      <Reveal delay={0.05}>
+        <dl className="grid grid-cols-3 gap-3 sm:gap-4">
+          {stats.map((st) => (
+            <div key={st.key} className="card p-5 sm:p-6">
+              <dt className="flex items-center gap-2 text-sm font-medium muted">
+                <StatusDot status={st.key} className="h-2.5 w-2.5" />
+                {st.label}
+              </dt>
+              <dd className="num mt-3 text-5xl leading-none sm:text-6xl">{st.value}</dd>
+            </div>
+          ))}
         </dl>
-      </header>
+      </Reveal>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-        <section aria-label="Calendar" className="surface p-4 sm:p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">{monthLabel(cursor.year, cursor.month)}</h2>
-            <div className="flex items-center gap-1">
-              <button type="button" className="btn btn-soft !px-3 !py-1.5" onClick={goToday}>
-                Today
-              </button>
-              <button type="button" className="icon-btn" onClick={() => shiftMonth(-1)} aria-label="Previous month">
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button type="button" className="icon-btn" onClick={() => shiftMonth(1)} aria-label="Next month">
-                <ChevronRight className="h-5 w-5" />
-              </button>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+        <Reveal delay={0.1}>
+          <section aria-label="Calendar" className="card p-5 sm:p-7">
+            <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-medium muted">
+              {WEEKDAYS.map((d) => (
+                <span key={d}>{d}</span>
+              ))}
             </div>
-          </div>
 
-          <div className="mb-2 grid grid-cols-7 gap-1.5 text-center text-xs font-semibold muted">
-            {WEEKDAYS.map((d) => (
-              <span key={d}>{d}</span>
-            ))}
-          </div>
-
-          <div className={`grid grid-cols-7 gap-1.5 transition-opacity ${monthLoading ? "opacity-60" : ""}`}>
-            {grid.map((date) => {
-              const inMonth = parseDate(date).getMonth() === cursor.month;
-              const s = summaries[date];
-              const status = date > today ? "upcoming" : s?.status || "none";
-              const isSelected = date === selected;
-              const isToday = date === today;
-              return (
-                <motion.button
-                  key={date}
-                  type="button"
-                  whileTap={{ scale: 0.92 }}
-                  onClick={() => selectDate(date)}
-                  aria-pressed={isSelected}
-                  aria-label={`${formatLong(date)}: ${STATUS[status].label}`}
-                  className={`relative aspect-square rounded-xl text-sm font-semibold transition-opacity ${
-                    STATUS[status].cell
-                  } ${inMonth ? "" : "opacity-35"} ${
-                    isSelected ? "ring-2 ring-ink ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-night-800" : ""
-                  }`}
-                >
-                  {parseDate(date).getDate()}
-                  {isToday && <span className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current" />}
-                </motion.button>
-              );
-            })}
-          </div>
-
-          <ul className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-xs muted">
-            {["completed", "partial", "missed", "pending", "none"].map((key) => (
-              <li key={key} className="flex items-center gap-1.5">
-                <span className={`h-3 w-3 rounded ${STATUS[key].cell}`} />
-                {STATUS[key].label}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section aria-label="Selected day">
-          <h2 className="text-xl font-semibold">{formatLong(selected)}</h2>
-
-          {dayLoading || !dayView ? (
-            <div className="grid place-items-center py-16">
-              <Spinner className="h-6 w-6 text-brand-600" />
+            <div className={`grid grid-cols-7 gap-2 transition-opacity ${monthLoading ? "opacity-60" : ""}`}>
+              {grid.map((date) => {
+                const inMonth = parseDate(date).getMonth() === cursor.month;
+                const s = summaries[date];
+                const status = date > today ? "upcoming" : s?.status || "none";
+                const isSelected = date === selected;
+                const isToday = date === today;
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    onClick={() => selectDate(date)}
+                    aria-pressed={isSelected}
+                    aria-label={`${formatLong(date)}: ${STATUS[status].label}`}
+                    className={`relative aspect-square rounded-2xl text-sm transition duration-150 hover:scale-[1.06] ${
+                      TILE[status] || TILE.none
+                    } ${inMonth ? "" : "opacity-30"} ${
+                      isSelected ? "ring-2 ring-ink ring-offset-2 ring-offset-panel" : ""
+                    }`}
+                  >
+                    {parseDate(date).getDate()}
+                    {isToday && <span className="absolute bottom-1.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current" />}
+                  </button>
+                );
+              })}
             </div>
-          ) : dayView.total === 0 ? (
-            <div className="mt-5">
-              <EmptyState
-                icon={CalendarClock}
-                title="Nothing scheduled"
-                text="No routines were set for this day. Routines only show from the day they start."
-              />
-            </div>
-          ) : (
-            <>
-              <p className="mt-2 text-sm muted">
-                {future ? `${dayView.total} routines planned` : `${dayView.done} of ${dayView.total} done`}
-              </p>
-              {!future && <DayBar statuses={dayView.items.map((i) => i.status)} className="mt-4" />}
-              <ul className="mt-5 space-y-2.5">
-                {dayView.items.map((item) => (
-                  <RoutineCard
-                    key={item.routine._id}
-                    item={item}
-                    readOnly={future}
-                    onSet={(status, note) => handleSet(item.routine._id, status, note)}
-                  />
-                ))}
-              </ul>
-              {future && <p className="mt-4 text-sm muted">You can log this day once it arrives.</p>}
-            </>
-          )}
-        </section>
+
+            <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-5 text-xs muted">
+              {marked.map((key) => (
+                <li key={key} className="flex items-center gap-2">
+                  <StatusDot status={key} className="h-2.5 w-2.5" />
+                  {STATUS[key].label}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </Reveal>
+
+        <Reveal delay={0.16}>
+          <section aria-label="Selected day" className="card p-5 sm:p-7">
+            <h2 className="text-2xl">{formatLong(selected)}</h2>
+
+            {dayLoading || !dayView ? (
+              <div className="grid place-items-center py-16">
+                <Spinner className="h-6 w-6 text-muted" />
+              </div>
+            ) : dayView.total === 0 ? (
+              <div className="mt-6">
+                <EmptyState
+                  icon={CalendarClock}
+                  title="Nothing scheduled"
+                  text="No routines were set for this day. Routines only show from the day they start."
+                />
+              </div>
+            ) : (
+              <>
+                <div className="mt-5">
+                  {!future && <DayBar statuses={dayView.items.map((i) => i.status)} />}
+                  <p className="mt-3 text-sm muted">
+                    {future ? `${dayView.total} routines planned` : `${dayView.done} of ${dayView.total} done`}
+                  </p>
+                </div>
+                <ul className="mt-4 space-y-0.5">
+                  {dayView.items.map((item) => (
+                    <RoutineCard
+                      key={item.routine._id}
+                      item={item}
+                      readOnly={future}
+                      onSet={(status, note) => handleSet(item.routine._id, status, note)}
+                    />
+                  ))}
+                </ul>
+                {future && <p className="mt-4 text-sm muted">You can log this day once it arrives.</p>}
+              </>
+            )}
+          </section>
+        </Reveal>
       </div>
     </div>
   );

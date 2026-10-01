@@ -1,8 +1,10 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
-export default function Modal({ open, onClose, title, children, maxWidth = "max-w-lg" }) {
+// side="center" (default) is a dialog; side="right" is a floating drawer.
+export default function Modal({ open, onClose, title, children, maxWidth = "max-w-lg", side = "center" }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => e.key === "Escape" && onClose();
@@ -15,37 +17,46 @@ export default function Modal({ open, onClose, title, children, maxWidth = "max-
     };
   }, [open, onClose]);
 
-  return (
+  const drawer = side === "right";
+  const ease = { duration: 0.3, ease: [0.22, 1, 0.36, 1] };
+
+  // Rendered in a portal so parent spacing and stacking never offset the overlay.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
+          className={`fixed inset-0 z-50 flex ${drawer ? "justify-end p-3" : "items-center justify-center p-4"}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          transition={{ duration: 0.2 }}
         >
-          <div className="absolute inset-0 bg-night-900/60 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/55 backdrop-blur-[3px]" onClick={onClose} />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className={`relative max-h-[92vh] w-full ${maxWidth} overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl dark:bg-night-800 sm:rounded-3xl`}
-            initial={{ y: 60, opacity: 0, scale: 0.98 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 40, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            className={
+              drawer
+                ? "relative flex h-full w-full max-w-md flex-col rounded-[28px] border border-line bg-panel"
+                : `relative flex max-h-[90vh] w-full ${maxWidth} flex-col rounded-[28px] border border-line bg-panel`
+            }
+            initial={drawer ? { x: "110%" } : { opacity: 0, y: 16, scale: 0.98 }}
+            animate={drawer ? { x: 0 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={drawer ? { x: "110%" } : { opacity: 0, y: 8 }}
+            transition={ease}
           >
-            <div className="mb-5 flex items-center justify-between gap-4">
-              <h2 className="text-xl font-semibold">{title}</h2>
+            <div className="flex items-center justify-between gap-4 px-7 pb-2 pt-7">
+              <h2 className="text-2xl">{title}</h2>
               <button type="button" onClick={onClose} className="icon-btn" aria-label="Close">
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5" strokeWidth={1.75} />
               </button>
             </div>
-            {children}
+            <div className="overflow-y-auto px-7 pb-7 pt-4">{children}</div>
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

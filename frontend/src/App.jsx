@@ -35,8 +35,8 @@ export default function App() {
       <Toaster
         position="top-center"
         toastOptions={{
-          className: "!rounded-xl !bg-white !text-ink !shadow-lift dark:!bg-night-700 dark:!text-white",
-          style: { fontSize: 14, fontWeight: 600 },
+          className: "!rounded-full !border !border-line !bg-panel !text-ink !shadow-card",
+          style: { fontSize: 14, fontWeight: 500 },
         }}
       />
       <Routes>

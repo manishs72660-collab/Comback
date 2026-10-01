@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
 import toast from "react-hot-toast";
-import { Flame, ListPlus, Plus, RotateCcw } from "lucide-react";
+import { CalendarDays, Flame, ListPlus, Plus, RotateCcw } from "lucide-react";
 
 import { dashboardApi, logApi, routineApi } from "../api";
 import { errorMessage } from "../api/axios";
 import AnimatedNumber from "../components/AnimatedNumber.jsx";
 import Confetti from "../components/Confetti.jsx";
-import DayBar from "../components/DayBar.jsx";
 import EmptyState from "../components/EmptyState.jsx";
 import Heatmap from "../components/Heatmap.jsx";
+import ProgressRing from "../components/ProgressRing.jsx";
+import Reveal from "../components/Reveal.jsx";
 import RoutineCard from "../components/RoutineCard.jsx";
 import RoutineFormModal from "../components/RoutineFormModal.jsx";
+import StatusDot from "../components/StatusDot.jsx";
 import WeekStrip from "../components/WeekStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { STARTERS, STATUS, TIMES } from "../utils/constants.jsx";
@@ -20,10 +21,15 @@ import { formatLong, formatShort, greeting, todayString } from "../utils/date.js
 
 function DashboardSkeleton() {
   return (
-    <div className="animate-pulse space-y-6" aria-hidden="true">
-      <div className="h-56 rounded-[28px] bg-ink/10 dark:bg-white/10" />
-      <div className="h-20 rounded-2xl bg-ink/5 dark:bg-white/5" />
-      <div className="h-64 rounded-2xl bg-ink/5 dark:bg-white/5" />
+    <div className="grid gap-5 xl:grid-cols-12" aria-hidden="true">
+      <div className="space-y-5 xl:col-span-8">
+        <div className="h-72 rounded-[24px] bg-panel" />
+        <div className="h-64 rounded-[24px] bg-panel" />
+      </div>
+      <div className="space-y-5 xl:col-span-4">
+        <div className="h-72 rounded-[24px] bg-panel" />
+        <div className="h-48 rounded-[24px] bg-panel" />
+      </div>
     </div>
   );
 }
@@ -151,76 +157,73 @@ export default function Dashboard() {
   const recentMisses = history.slice(0, 7).filter((d) => d.status === "missed").length;
   const showComeback = streak.current === 0 && stats.last30Days.activeDays > 0 && recentMisses >= 2;
 
+  const line =
+    day.total === 0
+      ? "A quiet day. Add a routine when you are ready."
+      : day.done === day.total
+      ? "Everything done. Rest well."
+      : `${day.total - day.done} to go. One at a time.`;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <Confetti show={confetti} />
 
-      <section className="rounded-[28px] bg-brand-600 p-6 text-white sm:p-8 dark:bg-brand-700">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-white/75">{formatLong(today)}</p>
-            <h1 className="mt-1 text-2xl font-semibold sm:text-3xl">
-              {greeting()}, {firstName}
-            </h1>
+      <Reveal>
+        <section className="card dots relative overflow-hidden p-7 sm:p-10">
+          <div className="flex flex-wrap items-center justify-between gap-x-10 gap-y-8">
+            <div className="min-w-0 flex-1 basis-72">
+              <span className="chip">
+                <CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
+                {formatLong(today)}
+              </span>
+              <h1 className="headline-script mt-5 break-words text-[clamp(3.5rem,7.5vw,6.5rem)]">
+                {greeting()}, {firstName}
+              </h1>
+              <p className="mt-3 max-w-md muted">{line}</p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>
+                  <Plus className="h-4 w-4" strokeWidth={2.25} />
+                  Add routine
+                </button>
+                <Link to="/history" className="btn btn-soft">
+                  View history
+                </Link>
+              </div>
+            </div>
+
+            <ProgressRing percent={day.percent} size={200}>
+              <p className="num text-5xl leading-none">
+                <AnimatedNumber value={day.done} />
+                <span className="text-2xl muted">/{day.total}</span>
+              </p>
+              <p className="mt-2 text-xs font-medium muted">done today</p>
+            </ProgressRing>
           </div>
-          <div className="flex items-center gap-2 rounded-full bg-hi-400 px-4 py-2 text-sm font-bold text-ink">
-            <Flame className="h-4 w-4" />
-            {streak.current} day streak
-          </div>
-        </div>
+        </section>
+      </Reveal>
 
-        <div className="mt-8 flex items-end gap-3">
-          <span className="font-display text-6xl font-bold leading-none sm:text-7xl">
-            <AnimatedNumber value={day.done} />
-          </span>
-          <span className="pb-1 text-lg text-white/75">
-            {day.total === 0 ? "routines scheduled today" : `of ${day.total} routines done`}
-          </span>
-        </div>
+      <div className="grid gap-5 xl:grid-cols-12">
+      {/* left column */}
+      <div className="space-y-5 xl:col-span-8">
+        {showComeback && (
+          <Reveal delay={0.05}>
+            <div className="card flex items-start gap-4 !border-accent/40 p-5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent/15 text-accent">
+                <RotateCcw className="h-4 w-4" strokeWidth={2} />
+              </span>
+              <p className="pt-1.5">
+                You missed a few days. That is fine. Tick off one routine today and your streak starts again.
+              </p>
+            </div>
+          </Reveal>
+        )}
 
-        <DayBar statuses={day.items.map((i) => i.status)} tone="onBrand" className="mt-5" />
-      </section>
+        <h2 id="today-heading" className="px-1 pt-3 text-xl">
+          Today's routines
+        </h2>
 
-      {showComeback && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-start gap-3 rounded-2xl border border-hi-500/40 bg-hi-400/25 p-4"
-        >
-          <RotateCcw className="mt-0.5 h-5 w-5 shrink-0" />
-          <p className="text-sm font-medium">
-            You missed a few days. That is fine. Tick off one routine today and your streak starts again.
-          </p>
-        </motion.div>
-      )}
-
-      <section className="flex flex-wrap items-center justify-between gap-6 border-b border-ink/10 pb-8 dark:border-white/10">
-        <WeekStrip days={week} todayDate={today} />
-        <dl className="flex gap-10">
-          <div>
-            <dt className="text-sm muted">Best streak</dt>
-            <dd className="font-display text-xl font-semibold">{streak.best} days</dd>
-          </div>
-          <div>
-            <dt className="text-sm muted">Last 30 days</dt>
-            <dd className="font-display text-xl font-semibold">{stats.last30Days.completionRate}%</dd>
-          </div>
-        </dl>
-      </section>
-
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section aria-labelledby="today-heading">
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <h2 id="today-heading" className="text-xl font-semibold">
-              Today's routines
-            </h2>
-            <button type="button" className="btn btn-primary" onClick={() => setFormOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add routine
-            </button>
-          </div>
-
-          {groups.length === 0 ? (
+        {groups.length === 0 ? (
+          <Reveal delay={0.1}>
             <EmptyState
               icon={ListPlus}
               title="Nothing scheduled today"
@@ -229,74 +232,72 @@ export default function Dashboard() {
               <div className="flex flex-wrap justify-center gap-2">
                 {STARTERS.map((s) => (
                   <button key={s.title} type="button" className="btn btn-soft" onClick={() => addStarter(s)}>
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4" strokeWidth={2.25} />
                     {s.title}
                   </button>
                 ))}
               </div>
             </EmptyState>
-          ) : (
-            <div className="space-y-7">
-              {groups.map((group) => {
-                const Icon = group.icon;
-                const done = group.items.filter((i) => i.status === "done").length;
-                return (
-                  <div key={group.value}>
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                      <Icon className="h-4 w-4 text-brand-600 dark:text-brand-300" />
-                      {group.label}
-                      <span className="font-medium muted">
-                        {done} of {group.items.length}
+          </Reveal>
+        ) : (
+          groups.map((group, gi) => {
+            const Icon = group.icon;
+            const done = group.items.filter((i) => i.status === "done").length;
+            return (
+              <Reveal key={group.value} delay={0.1 + gi * 0.06}>
+                <section className="card p-3 sm:p-4" aria-labelledby="today-heading">
+                  <div className="flex items-center justify-between px-3 pb-2 pt-2">
+                    <h3 className="flex items-center gap-3 text-base">
+                      <span className="grid h-9 w-9 place-items-center rounded-full bg-panel2">
+                        <Icon className="h-4 w-4" strokeWidth={1.75} />
                       </span>
-                    </div>
-                    <ul className="space-y-2.5">
-                      {group.items.map((item) => (
-                        <RoutineCard
-                          key={item.routine._id}
-                          item={item}
-                          onSet={(status, note) => handleSet(item.routine._id, status, note)}
-                        />
-                      ))}
-                    </ul>
+                      {group.label}
+                    </h3>
+                    <span className="chip">
+                      {done} of {group.items.length}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                  <ul className="space-y-0.5">
+                    {group.items.map((item) => (
+                      <RoutineCard
+                        key={item.routine._id}
+                        item={item}
+                        onSet={(status, note) => handleSet(item.routine._id, status, note)}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              </Reveal>
+            );
+          })
+        )}
 
-        <aside className="space-y-9">
-          <section aria-labelledby="grid-heading">
-            <h2 id="grid-heading" className="mb-4 text-lg font-semibold">
-              Last 4 months
-            </h2>
-            <Heatmap data={heatmap} onSelect={(date) => navigate(`/history?date=${date}`)} />
-          </section>
-
-          <section aria-labelledby="recent-heading">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 id="recent-heading" className="text-lg font-semibold">
+        <Reveal delay={0.2}>
+          <section className="card p-4 sm:p-5" aria-labelledby="recent-heading">
+            <div className="flex items-baseline justify-between px-3 pb-2 pt-2">
+              <h2 id="recent-heading" className="text-lg">
                 Recent days
               </h2>
-              <Link to="/history" className="text-sm font-semibold text-brand-700 hover:underline dark:text-brand-300">
+              <Link to="/history" className="text-sm font-medium muted transition-colors hover:text-ink">
                 See all
               </Link>
             </div>
-            <ul className="divide-y divide-ink/10 dark:divide-white/10">
+            <ul>
               {recent.map((d) => (
                 <li key={d.date}>
                   <Link
                     to={`/history?date=${d.date}`}
-                    className="flex items-center justify-between gap-3 py-3 text-sm transition-colors hover:text-brand-700 dark:hover:text-brand-300"
+                    className="flex items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors hover:bg-panel2/60"
                   >
                     <span className="font-medium">{formatShort(d.date)}</span>
-                    <span className="flex items-center gap-3">
+                    <span className="flex items-center gap-3 muted">
                       {d.total > 0 && (
-                        <span className="muted">
+                        <span className="tabular-nums">
                           {d.done}/{d.total}
                         </span>
                       )}
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS[d.status].pill}`}>
+                      <span className="flex items-center gap-2">
+                        <StatusDot status={d.status} className="h-2 w-2" />
                         {STATUS[d.status].label}
                       </span>
                     </span>
@@ -305,7 +306,62 @@ export default function Dashboard() {
               ))}
             </ul>
           </section>
-        </aside>
+        </Reveal>
+      </div>
+
+      {/* right column */}
+      <div className="space-y-5 xl:col-span-4">
+        <Reveal delay={0.08}>
+          <section className="card p-7">
+            <p className="flex items-center gap-2 text-sm font-medium muted">
+              <Flame className="h-4 w-4 text-accent" strokeWidth={2.25} />
+              Current streak
+            </p>
+            <p className="mt-5 flex items-end gap-2">
+              <span className="num text-[6rem] leading-[.8] text-accent">
+                <AnimatedNumber value={streak.current} />
+              </span>
+              <span className="pb-1 text-lg font-medium muted">days</span>
+            </p>
+            <p className="mt-4 text-sm muted">
+              Best streak <span className="font-semibold text-ink">{streak.best} days</span>
+            </p>
+            <div className="mt-7 border-t border-line pt-6">
+              <WeekStrip days={week} todayDate={today} />
+            </div>
+          </section>
+        </Reveal>
+
+        <Reveal delay={0.14}>
+          <section className="card p-7">
+            <p className="text-sm font-medium muted">Last 30 days</p>
+            <p className="mt-3 flex items-end justify-between gap-4">
+              <span className="num text-5xl leading-none">
+                {stats.last30Days.completionRate}
+                <span className="text-2xl muted">%</span>
+              </span>
+              <span className="pb-1 text-sm muted">{stats.last30Days.activeDays} active days</span>
+            </p>
+            <div className="mt-5 h-2 overflow-hidden rounded-full bg-ink/10">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-700 ease-out"
+                style={{ width: `${stats.last30Days.completionRate}%` }}
+              />
+            </div>
+          </section>
+        </Reveal>
+
+        <Reveal delay={0.2}>
+          <section className="card p-7" aria-labelledby="grid-heading">
+            <h2 id="grid-heading" className="mb-5 text-lg">
+              Last 4 months
+            </h2>
+            <Heatmap data={heatmap} onSelect={(date) => navigate(`/history?date=${date}`)} />
+          </section>
+        </Reveal>
+
+      </div>
+
       </div>
 
       <RoutineFormModal

@@ -2,54 +2,155 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------- themes: dark and white ---------- */
 @layer base {
+  :root,
+  :root[data-theme="light"] {
+    --bg: 244 244 242;
+    --panel: 255 255 255;
+    --panel2: 237 237 234;
+    --ink: 14 14 16;
+    --muted: 110 110 118;
+    --accent: 214 140 12;
+    --danger: 201 60 60;
+    --line: rgba(14, 14, 16, 0.08);
+    --shadow-card: 0 1px 2px rgba(14, 14, 16, 0.04), 0 18px 40px -22px rgba(14, 14, 16, 0.18);
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --bg: 9 9 11;
+    --panel: 20 20 23;
+    --panel2: 30 30 35;
+    --ink: 245 245 243;
+    --muted: 142 142 152;
+    --accent: 247 192 70;
+    --danger: 239 83 80;
+    --line: rgba(255, 255, 255, 0.08);
+    --shadow-card: 0 0 #0000;
+    color-scheme: dark;
+  }
+
   html {
     -webkit-tap-highlight-color: transparent;
   }
   body {
-    @apply bg-paper-100 font-sans text-ink antialiased dark:bg-night-900 dark:text-paper-100;
+    @apply bg-bg font-sans text-ink antialiased;
+    font-size: 15px;
+    line-height: 1.55;
   }
   h1,
-  h2,
-  h3 {
-    @apply font-display tracking-tight;
+  h2 {
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
   }
-  :focus-visible {
-    outline: 2px solid theme("colors.brand.500");
-    outline-offset: 2px;
+  h3 {
+    @apply text-[15px] font-semibold;
   }
   ::selection {
-    background: theme("colors.hi.400");
-    color: theme("colors.ink");
+    background: rgb(var(--accent));
+    color: #0c0c0d;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--ink));
+    outline-offset: 3px;
+  }
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+  }
+
+  /* theme switch: colours ease over 250ms */
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, border-color, color;
+    transition-duration: 250ms;
+    transition-timing-function: ease;
   }
 }
 
 @layer components {
-  .surface {
-    @apply rounded-2xl border border-ink/10 bg-white shadow-lift dark:border-white/10 dark:bg-night-800 dark:shadow-none;
+  /* the home page headline */
+  .headline-script {
+    font-family: "Dancing Script", cursive;
+    font-optical-sizing: auto;
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.05;
+  }
+  .page-title {
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    line-height: 1.02;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -0.05em;
   }
   .muted {
-    @apply text-ink/60 dark:text-white/55;
+    @apply text-muted;
   }
-  .field-label {
-    @apply text-sm font-semibold;
+
+  .card {
+    @apply rounded-[24px] border border-line bg-panel shadow-card;
   }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-panel2/60 px-3 py-1 text-xs font-medium text-muted;
+  }
+  /* faint dot grid used behind hero cards */
+  .dots {
+    background-image: radial-gradient(rgb(var(--ink) / 0.07) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:pointer-events-none disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-full border border-transparent px-5 py-2.5 text-sm font-medium transition duration-150 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50;
   }
+  /* inverted: light on dark, dark on white */
   .btn-primary {
-    @apply bg-brand-600 text-white hover:bg-brand-700 dark:bg-brand-500 dark:hover:bg-brand-400;
+    @apply bg-ink text-bg hover:opacity-90;
   }
   .btn-soft {
-    @apply bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-white/10 dark:text-white dark:hover:bg-white/15;
+    @apply border-line bg-panel text-ink hover:bg-panel2;
   }
   .btn-danger {
-    @apply bg-rose-600 text-white hover:bg-rose-700;
+    @apply border-line bg-panel text-ink hover:border-danger/50 hover:text-danger;
   }
   .icon-btn {
-    @apply grid h-9 w-9 place-items-center rounded-xl text-ink/55 transition-colors hover:bg-ink/5 hover:text-ink dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white;
+    @apply inline-grid h-9 w-9 place-items-center rounded-full text-muted transition-colors duration-150 hover:bg-panel2 hover:text-ink;
+  }
+
+  .field-label {
+    @apply block text-[13px] font-medium text-muted;
   }
   .input {
-    @apply w-full rounded-xl border border-ink/15 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-ink/35 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 dark:border-white/15 dark:bg-night-700 dark:placeholder:text-white/30;
+    @apply block w-full rounded-2xl border border-line bg-panel px-4 py-3 text-[15px] text-ink transition-colors duration-150 placeholder:text-muted/70 focus:border-ink;
+  }
+
+  .row-actions {
+    transition: opacity 150ms ease;
+  }
+  @media (hover: hover) {
+    .row-actions {
+      opacity: 0;
+    }
+    .group:hover .row-actions,
+    .group:focus-within .row-actions {
+      opacity: 1;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
