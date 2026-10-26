@@ -13,9 +13,14 @@ const ALLOWED_FIELDS = [
   "reminderTime",
   "repeatType",
   "repeatDays",
+  "weeklyTarget",
+  "minimumTarget",
+  "normalTarget",
+  "restDays",
   "startDate",
   "order",
   "isActive",
+  "isArchived",
 ];
 
 const pickFields = (body) => {
@@ -55,6 +60,38 @@ const createRoutine = async (req, res) => {
   }
 };
 
+const createRoutineBatch = async (req, res) => {
+  try {
+    const { routines } = req.body;
+    if (!Array.isArray(routines) || routines.length < 1 || routines.length > 20) {
+      return badRequest(res, "A routine plan must contain between 1 and 20 routines");
+    }
+    if (routines.some((entry) => !entry || typeof entry !== "object" || Array.isArray(entry))) {
+      return badRequest(res, "Every routine in the plan must be a valid object");
+    }
+    const entries = routines.map((entry, index) => {
+      const data = pickFields(entry);
+      if (data.startDate === undefined) data.startDate = todayString();
+      if (!isValidDateString(data.startDate)) {
+        return null;
+      }
+      return { ...data, order: index, userId: req.user._id };
+    });
+    if (entries.some((entry) => entry === null)) {
+      return badRequest(res, "startDate must be a valid YYYY-MM-DD date");
+    }
+    const created = await Routine.insertMany(entries);
+    return res.status(201).json({
+      success: true,
+      message: "Routine plan created",
+      count: created.length,
+      routines: created,
+    });
+  } catch (error) {
+    return handleError(res, error, "Create Routine Plan Error");
+  }
+};
+
 // ================= LIST =================
 // GET /routines?active=true|false&category=health
 
@@ -64,6 +101,8 @@ const getRoutines = async (req, res) => {
 
     if (req.query.active === "true") filter.isActive = true;
     if (req.query.active === "false") filter.isActive = false;
+    if (req.query.archived === "true") filter.isArchived = true;
+    if (req.query.archived !== "true") filter.isArchived = { $ne: true };
     if (req.query.category) filter.category = String(req.query.category);
 
     const routines = await Routine.find(filter).sort({ order: 1, createdAt: 1 });
@@ -146,6 +185,27 @@ const toggleRoutine = async (req, res) => {
   }
 };
 
+const archiveRoutine = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) return badRequest(res, "Invalid routine id");
+
+    const routine = await Routine.findOne({ _id: id, userId: req.user._id });
+    if (!routine) return notFound(res);
+
+    routine.isArchived = !routine.isArchived;
+    await routine.save();
+
+    return res.status(200).json({
+      success: true,
+      message: routine.isArchived ? "Routine archived" : "Routine restored",
+      routine,
+    });
+  } catch (error) {
+    return handleError(res, error, "Archive Routine Error");
+  }
+};
+
 // ================= DELETE =================
 // Removes the routine and all of its logs.
 
@@ -173,9 +233,11 @@ const deleteRoutine = async (req, res) => {
 
 module.exports = {
   createRoutine,
+  createRoutineBatch,
   getRoutines,
   getRoutineById,
   updateRoutine,
   toggleRoutine,
+  archiveRoutine,
   deleteRoutine,
 };

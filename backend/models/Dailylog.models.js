@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 // One document per (user, routine, date).
-// Only "done" and "skipped" are stored. "pending" = no document.
+// Pending is not stored; rescheduled records preserve the skipped source date.
 // "missed" is derived: scheduled, date is in the past, and no document.
 const dailyLogSchema = new mongoose.Schema(
   {
@@ -26,8 +26,22 @@ const dailyLogSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["done", "skipped"],
+      enum: ["done", "skipped", "rescheduled"],
       required: true,
+    },
+
+    amount: {
+      type: Number,
+      min: 0,
+      max: 1000,
+      default: 1,
+      validate: Number.isInteger,
+    },
+
+    rescheduledTo: {
+      type: String,
+      match: [/^\d{4}-\d{2}-\d{2}$/, "rescheduledTo must be YYYY-MM-DD"],
+      default: "",
     },
 
     note: {

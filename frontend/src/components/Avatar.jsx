@@ -1,11 +1,10 @@
-export default function Avatar({ name = "", className = "h-9 w-9 text-sm" }) {
-  const initial = (name.trim()[0] || "?").toUpperCase();
+const initials = (name = "") =>
+  name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
+
+export default function Avatar({ user, size = "normal" }) {
   return (
-    <span
-      className={`grid shrink-0 place-items-center rounded-full bg-ink font-semibold text-bg ${className}`}
-      aria-hidden="true"
-    >
-      {initial}
+    <span className={`avatar ${size}`}>
+      {user?.avatar ? <img src={user.avatar} alt="" /> : initials(user?.name || "U")}
     </span>
   );
 }

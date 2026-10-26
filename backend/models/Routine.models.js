@@ -25,8 +25,37 @@ const routineSchema = new mongoose.Schema(
 
     category: {
       type: String,
-      enum: ["health", "study", "work", "personal", "other"],
+      enum: ["health", "fitness", "study", "work", "personal", "development", "other"],
       default: "personal",
+    },
+
+    minimumTarget: {
+      type: Number,
+      min: 1,
+      max: 1000,
+      default: 1,
+      validate: Number.isInteger,
+    },
+
+    normalTarget: {
+      type: Number,
+      min: 1,
+      max: 1000,
+      default: 1,
+      validate: Number.isInteger,
+    },
+
+    weeklyTarget: {
+      type: Number,
+      min: 1,
+      max: 7,
+      default: 7,
+      validate: Number.isInteger,
+    },
+
+    restDays: {
+      type: [{ type: Number, min: 0, max: 6 }],
+      default: [],
     },
 
     timeOfDay: {
@@ -44,7 +73,7 @@ const routineSchema = new mongoose.Schema(
 
     repeatType: {
       type: String,
-      enum: ["daily", "weekdays", "custom"],
+      enum: ["daily", "weekdays", "custom", "weekly"],
       default: "daily",
     },
 
@@ -57,6 +86,11 @@ const routineSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+
+    isArchived: {
+      type: Boolean,
+      default: false,
     },
 
     // "YYYY-MM-DD". Routine does not count for days before this date.
@@ -75,12 +109,15 @@ const routineSchema = new mongoose.Schema(
 );
 
 routineSchema.pre("validate", function () {
+  this.repeatDays = [...new Set(this.repeatDays || [])];
+  this.restDays = [...new Set(this.restDays || [])];
+  if (this.normalTarget < this.minimumTarget) {
+    this.invalidate("normalTarget", "Normal target must be at least the minimum target");
+  }
   if (this.repeatType === "custom") {
     if (!this.repeatDays || this.repeatDays.length === 0) {
       this.invalidate("repeatDays", "Select at least one day for a custom repeat");
     }
-    // remove duplicates
-    this.repeatDays = [...new Set(this.repeatDays)];
   } else {
     this.repeatDays = [];
   }

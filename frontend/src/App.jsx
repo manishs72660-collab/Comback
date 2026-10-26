@@ -1,61 +1,45 @@
-import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
-import { MotionConfig } from "framer-motion";
-import { Toaster } from "react-hot-toast";
-
-import { useAuth } from "./context/AuthContext.jsx";
-import Layout from "./components/Layout.jsx";
-import { PageLoader } from "./components/Spinner.jsx";
-import Login from "./pages/Login.jsx";
-import Register from "./pages/Register.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Routines from "./pages/Routines.jsx";
-import History from "./pages/History.jsx";
-import Profile from "./pages/Profile.jsx";
-import NotFound from "./pages/NotFound.jsx";
-
-function ProtectedRoute() {
-  const { user, loading } = useAuth();
-  const location = useLocation();
-  if (loading) return <PageLoader />;
-  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
-  return <Outlet />;
-}
-
-function PublicOnlyRoute() {
-  const { user, loading } = useAuth();
-  if (loading) return <PageLoader />;
-  if (user) return <Navigate to="/" replace />;
-  return <Outlet />;
-}
+import { useCallback, useEffect, useState } from "react";
+import AuthPage from "./pages/AuthPage";
+import LandingPage from "./pages/LandingPage";
+import Workspace from "./pages/Workspace";
+import { request } from "./utils/api";
 
 export default function App() {
-  return (
-    // reducedMotion="user": animations switch off for people who ask for less motion
-    <MotionConfig reducedMotion="user">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          className: "!rounded-full !border !border-line !bg-panel !text-ink !shadow-card",
-          style: { fontSize: 14, fontWeight: 500 },
-        }}
-      />
-      <Routes>
-        <Route element={<PublicOnlyRoute />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-        </Route>
+  const [user, setUser] = useState(null);
+  const [authMode, setAuthMode] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
 
-        <Route element={<ProtectedRoute />}>
-          <Route element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="routines" element={<Routines />} />
-            <Route path="history" element={<History />} />
-            <Route path="profile" element={<Profile />} />
-          </Route>
-        </Route>
+  useEffect(() => {
+    let active = true;
+    const restoreSession = async () => {
+      try {
+        let profile;
+        try {
+          profile = await request("/auth/me", {}, false);
+        } catch {
+          await request("/auth/refresh", { method: "POST" }, false);
+          profile = await request("/auth/me", {}, false);
+        }
+        if (active) setUser(profile.user);
+      } catch {
+        if (active) setUser(null);
+      } finally {
+        if (active) setCheckingSession(false);
+      }
+    };
+    restoreSession();
+    return () => { active = false; };
+  }, []);
 
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </MotionConfig>
-  );
+  const logout = useCallback(() => {
+    setUser(null);
+    setAuthMode(null);
+  }, []);
+
+  if (checkingSession) {
+    return <div className="loading-screen"><span className="loading-wordmark">come back to yourself</span><div className="loader" /></div>;
+  }
+  if (user) return <Workspace key={user.id || user._id} initialUser={user} onLogout={logout} />;
+  if (authMode) return <AuthPage initialMode={authMode} onBack={() => setAuthMode(null)} onAuth={setUser} />;
+  return <LandingPage onAuth={setAuthMode} />;
 }

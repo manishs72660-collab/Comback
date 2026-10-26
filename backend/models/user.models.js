@@ -25,6 +25,20 @@ const userSchema = new mongoose.Schema(
     avatar: {
         type: String,
         default: ""
+    },
+    wallpaper: {
+        type: String,
+        default: ""
+    },
+    bio: {
+        type: String,
+        trim: true,
+        maxlength: 240,
+        default: ""
+    },
+    goals: {
+        type: [String],
+        default: []
     }
 },
 {

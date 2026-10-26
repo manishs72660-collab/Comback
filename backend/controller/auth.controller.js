@@ -66,6 +66,9 @@ const publicUser = (user) => ({
   name: user.name,
   email: user.email,
   avatar: user.avatar,
+  wallpaper: user.wallpaper,
+  bio: user.bio,
+  goals: user.goals,
 });
 
 // ================= REGISTER =================
