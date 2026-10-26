@@ -50,8 +50,9 @@ io.on("connection", (socket) => {
       if (typeof recipientId !== "string" || !mongoose.isValidObjectId(recipientId) || typeof body !== "string" || !body.trim() || body.trim().length > 2000) {
         return acknowledge({ success: false, message: "A recipient and message of up to 2000 characters are required" });
       }
-      const [followsRecipient, recipientFollows] = await Promise.all([
+        const [followsRecipient, recipientFollows] = await Promise.all([
         Follow.exists({ followerId: socket.userId, followingId: recipientId }),
+
         Follow.exists({ followerId: recipientId, followingId: socket.userId }),
       ]);
       if (!followsRecipient || !recipientFollows) return acknowledge({ success: false, message: "Follow each other to message" });
@@ -59,6 +60,7 @@ io.on("connection", (socket) => {
       const notification = await Notification.create({
         recipientId, actorId: socket.userId, type: "message", text: "sent you a message", link: `/messages/${socket.userId}`,
       });
+      
       const sender = await User.findById(socket.userId).select("name avatar").lean();
       io.to(`user:${recipientId}`).emit("message:new", message);
       io.to(`user:${recipientId}`).emit("notification:new", {
