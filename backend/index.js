@@ -60,16 +60,18 @@ io.on("connection", (socket) => {
       const notification = await Notification.create({
         recipientId, actorId: socket.userId, type: "message", text: "sent you a message", link: `/messages/${socket.userId}`,
       });
-      
+
       const sender = await User.findById(socket.userId).select("name avatar").lean();
       io.to(`user:${recipientId}`).emit("message:new", message);
       io.to(`user:${recipientId}`).emit("notification:new", {
         ...notification.toObject(),
+
         actorId: sender ? { ...sender, _id: socket.userId } : { _id: socket.userId },
       });
       acknowledge({ success: true, message });
     } catch (error) {
       console.error("Socket message error:", error);
+
       acknowledge({ success: false, message: "Unable to send message" });
     }
   });
@@ -79,6 +81,7 @@ const InitlizeConnection = async () => {
   try {
     await Promise.all([
       client.connect(),
+
       main(),
     ]);
     await Notification.createIndexes();
@@ -88,6 +91,7 @@ const InitlizeConnection = async () => {
 
     const PORT = process.env.PORT || 3000;
 
+    
     server.listen(PORT, () => {
       console.log(`Server listening on port ${PORT}`);
     });
