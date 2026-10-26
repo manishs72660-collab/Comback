@@ -4,17 +4,20 @@ import { API, request, json } from "../utils/api";
 import { localDate } from "../utils/date";
 import Avatar from "../components/Avatar";
 import BrandLogo from "../components/BrandLogo";
+import { applyColorTheme, colorThemes, saveColorTheme, validTheme } from "../utils/themes";
 import {
   Activity, ArrowUpRight, Bell, CalendarDays, Check, CheckCheck,
-  ChevronDown, CircleHelp, Flame, ImagePlus, LayoutDashboard, ListTodo,
-  Menu, MessageCircle, MoreHorizontal, Pause, Pencil, Play, Plus, Search, Send,
-  Settings2, Sparkles, Target, Trash2, UserRound, Users, X,
+  ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Flame, History as HistoryIcon,
+  ImagePlus, LayoutDashboard, ListTodo, Menu, MessageCircle, MoreHorizontal, Palette,
+  Pause, Pencil, Play, Plus, Save, Search, Send, Settings2, SlidersHorizontal, Sparkles, Target,
+  Trash2, UserRound, Users, X,
 } from "lucide-react";
 
 const menu = [
   { id: "dashboard", label: "Overview", icon: LayoutDashboard },
   { id: "tasks", label: "My tasks", icon: ListTodo },
   { id: "routines", label: "Routines", icon: CalendarDays },
+  { id: "history", label: "History", icon: HistoryIcon },
   { id: "friends", label: "Your circle", icon: Users },
   { id: "messages", label: "Messages", icon: MessageCircle },
   { id: "assistant", label: "AI assistant", icon: MessageCircle },
@@ -59,6 +62,12 @@ const routineTemplates = [
   },
 ];
 
+const dashboardThemes = [
+  { id: "focus", title: "Focus", description: "Give today's routines and priorities the most space.", icon: Target },
+  { id: "balanced", title: "Balanced", description: "Keep your progress, routines, and tasks in view together.", icon: Activity },
+  { id: "compact", title: "Compact", description: "Fit more of your day into a tighter dashboard.", icon: LayoutDashboard },
+];
+
 export default function Workspace({ initialUser, onLogout }) {
   const [user, setUser] = useState(initialUser);
   const [view, setView] = useState("dashboard");
@@ -72,6 +81,13 @@ export default function Workspace({ initialUser, onLogout }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
   const flash = useCallback((message) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); }, []);
+  useLayoutEffect(() => {
+    const userId = initialUser.id || initialUser._id;
+    const savedTheme = window.localStorage.getItem(`comeback-theme:${userId}`) || window.localStorage.getItem("comeback-theme");
+    const legacyTheme = window.localStorage.getItem(`comeback-accent-${userId}`);
+    const migratedTheme = { blue: "ocean-blue", green: "emerald", purple: "purple" }[legacyTheme] || "orange";
+    applyColorTheme(validTheme(savedTheme) ? savedTheme : migratedTheme);
+  }, [initialUser.id, initialUser._id]);
 
   useEffect(() => {
     if (!user) return;
@@ -119,8 +135,6 @@ export default function Workspace({ initialUser, onLogout }) {
 
   if (loading) return <div className="loading-screen"><BrandLogo compact /><div className="loader" /></div>;
 
-  const pending = data.tasks.filter((task) => task.status === "pending");
-  const completed = data.tasks.filter((task) => task.status === "completed");
   const dashboard = data.dashboard;
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
 
@@ -152,9 +166,10 @@ export default function Workspace({ initialUser, onLogout }) {
       </header>
       <section className="page-content">
         {dataError && <div className="load-error"><CircleHelp size={16} />We couldn't load your latest data: {dataError}<button onClick={refresh}>Try again</button></div>}
-        {view === "dashboard" && <Dashboard user={user} data={data} greeting={greeting} pending={pending} onNavigate={setView} onRefresh={refresh} onFlash={flash} />}
+        {view === "dashboard" && <Dashboard user={user} data={data} greeting={greeting} tasks={data.tasks} onNavigate={setView} onRefresh={refresh} onFlash={flash} />}
         {view === "tasks" && <Tasks tasks={data.tasks} onRefresh={refresh} onFlash={flash} />}
         {view === "routines" && <Routines routines={data.routines} today={dashboard?.today} onRefresh={refresh} onFlash={flash} />}
+        {view === "history" && <HistoryPage />}
         {view === "friends" && <Friends friends={data.friends} followers={data.followers} counts={data.connectionCounts} onRefresh={refresh} onFlash={flash} onOpenProfile={openSocialProfile} />}
         {view === "social-profile" && selectedFriend && <SocialProfile key={selectedFriend._id} person={selectedFriend} onBack={() => setView("friends")} onRefresh={refresh} onFlash={flash} onMessage={(person) => { setSelectedFriend(person); setView("messages"); }} />}
         {view === "messages" && <Messages friends={data.friends} conversations={data.conversations} initialFriend={selectedFriend} onFlash={flash} onRefresh={refresh} />}
@@ -170,19 +185,80 @@ function PageTitle({ eyebrow, title, subtitle, action }) {
   return <div className="page-title"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>{action}</div>;
 }
 
-function Dashboard({ user, data, greeting, pending, onNavigate, onRefresh, onFlash }) {
+function Dashboard({ user, data, greeting, tasks, onNavigate, onRefresh, onFlash }) {
   const [quote, setQuote] = useState("");
   const [quoteError, setQuoteError] = useState("");
+  const [dashboardMode, setDashboardMode] = useState(() =>
+    ["focus", "balanced", "compact"].includes(window.localStorage.getItem(`comeback-dashboard-${user.id || user._id}`))
+      ? window.localStorage.getItem(`comeback-dashboard-${user.id || user._id}`)
+      : "classic"
+  );
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [colorTheme, setColorTheme] = useState(() => document.documentElement.dataset.theme || "orange");
+  const [dailyNote, setDailyNote] = useState("");
+  const [noteLoading, setNoteLoading] = useState(true);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteError, setNoteError] = useState("");
+  const todayDate = localDate();
   useEffect(() => { request("/assistant/quote").then((result) => setQuote(result.quote)).catch((error) => setQuoteError(error.message)); }, []);
+  useEffect(() => {
+    let active = true;
+    setNoteLoading(true);
+    setNoteError("");
+    request(`/logs/note?date=${todayDate}`)
+      .then((result) => { if (active) setDailyNote(result.note || ""); })
+      .catch((error) => { if (active) setNoteError(error.message); })
+      .finally(() => { if (active) setNoteLoading(false); });
+    return () => { active = false; };
+  }, [todayDate]);
   const today = data.dashboard?.today;
   const completion = today?.percent || 0;
   const avatarImage = user.wallpaper || user.avatar;
   const analytics = data.analytics;
   const doneToday = today?.done || 0;
-  const recentTasks = pending.slice(0, 4);
+  const changeDashboardMode = (mode) => {
+    window.localStorage.setItem(`comeback-dashboard-${user.id || user._id}`, mode);
+    setDashboardMode(mode);
+    setThemePickerOpen(false);
+  };
+  const changeColorTheme = (theme) => {
+    if (saveColorTheme(theme, user.id || user._id)) setColorTheme(theme);
+  };
+  const saveDailyNote = async () => {
+    setNoteSaving(true);
+    try {
+      const result = await request("/logs/note", json("PUT", { date: todayDate, note: dailyNote }));
+      setDailyNote(result.note);
+      setNoteError("");
+      onFlash("Today's note saved.");
+    } catch (error) {
+      setNoteError(error.message);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
   return <div className="dashboard-page">
-    <div className="welcome-row"><div><span className="eyebrow">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }).toUpperCase()}</span><h1>{greeting}, <em className="user-name-rubik">{user.name.split(" ")[0]}</em>.</h1><p>A fresh day is another chance to show up for yourself.</p></div><div className="welcome-actions"><button className="button subtle" onClick={() => onNavigate("profile")}><ImagePlus size={16} /> Personalize</button><button className="button primary" onClick={() => onNavigate("tasks")}><Plus size={16} /> Add a task</button></div></div>
-    <div className="dashboard-grid">
+    <div className="welcome-row"><div><span className="eyebrow">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }).toUpperCase()}</span><h1>{greeting}, <em className="user-name-rubik">{user.name.split(" ")[0]}</em>.</h1><p>A fresh day is another chance to show up for yourself.</p></div><div className="welcome-actions"><button className={`button ${colorPickerOpen ? "primary" : "subtle"} dashboard-theme-trigger`} type="button" aria-expanded={colorPickerOpen} aria-controls="dashboard-color-picker" onClick={() => { setColorPickerOpen((open) => !open); setThemePickerOpen(false); }}><Palette size={15} /> Colors</button><button className={`button ${themePickerOpen ? "primary" : "subtle"} dashboard-theme-trigger`} type="button" aria-expanded={themePickerOpen} aria-controls="dashboard-theme-picker" onClick={() => { setThemePickerOpen((open) => !open); setColorPickerOpen(false); }}><SlidersHorizontal size={15} /> Dashboard style</button><button className="button subtle" onClick={() => onNavigate("profile")}><ImagePlus size={16} /> Personalize</button><button className="button primary" onClick={() => onNavigate("tasks")}><Plus size={16} /> Add a task</button></div></div>
+    {colorPickerOpen && <section className="dashboard-color-picker" id="dashboard-color-picker" aria-label="Choose a color theme">
+      <div className="dashboard-theme-picker-heading"><div><span className="eyebrow">CHOOSE YOUR COLORS</span><h2>Dashboard color</h2><p>Change the colors across your entire Comback workspace.</p></div><button type="button" className="icon-button quiet" aria-label="Close color themes" onClick={() => setColorPickerOpen(false)}><X size={16} /></button></div>
+      <div className="dashboard-color-options">
+        {colorThemes.map(({ id, label, color }) => <button type="button" key={id} className={`dashboard-color-option ${colorTheme === id ? "selected" : ""}`} onClick={() => changeColorTheme(id)} aria-label={`${label} theme${colorTheme === id ? ", selected" : ""}`} aria-pressed={colorTheme === id}>
+          <span className="accent-theme-swatch" style={{ "--swatch-color": color }}>{colorTheme === id && <Check size={12} />}</span><span>{label}</span>
+        </button>)}
+      </div>
+    </section>}
+    {themePickerOpen && <section className="dashboard-theme-picker" id="dashboard-theme-picker" aria-label="Choose a dashboard design">
+      <div className="dashboard-theme-picker-heading"><div><span className="eyebrow">MAKE YOUR HOME YOURS</span><h2>Choose a dashboard style</h2><p>Pick a layout that fits the way you plan your day.</p></div><button type="button" className="icon-button quiet" aria-label="Close dashboard styles" onClick={() => setThemePickerOpen(false)}><X size={16} /></button></div>
+      <div className="dashboard-theme-options">
+        {dashboardThemes.map(({ id, title, description, icon: Icon }) => <button type="button" key={id} className={`dashboard-theme-card ${dashboardMode === id ? "selected" : ""}`} onClick={() => changeDashboardMode(id)} aria-pressed={dashboardMode === id}>
+          <span className={`dashboard-theme-preview preview-${id}`} aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
+          <span className="dashboard-theme-card-copy"><span><Icon size={15} />{title}{dashboardMode === id && <b>SELECTED</b>}</span><small>{description}</small></span>
+        </button>)}
+      </div>
+      <div className="dashboard-theme-picker-footer"><span>Your current accent color and dashboard data stay the same.</span><button type="button" className="dashboard-reset-button" onClick={() => changeDashboardMode("classic")}>Restore classic layout</button></div>
+    </section>}
+    <div className={`dashboard-grid ${dashboardMode === "classic" ? "" : `dashboard-layout-${dashboardMode}`}`}>
       <section className="hero-card panel" style={avatarImage ? { backgroundImage: `linear-gradient(90deg,rgba(18,13,11,.94) 4%,rgba(22,15,12,.73) 54%,rgba(20,14,12,.28)),url("${avatarImage}")` } : undefined}>
         <div className="hero-content"><span className="hero-tag">YOUR DAY, YOUR PACE</span><h2>Progress is built<br />in the <em>little things.</em></h2><p>You've completed <strong>{doneToday} of {today?.total || 0}</strong> planned routines today. Keep the momentum going.</p><button className="button orange-outline" onClick={() => onNavigate("routines")}>View today's plan <ArrowUpRight size={15} /></button></div>
         <div className="hero-bottom"><div className="hero-date"><span>{new Date().toLocaleDateString(undefined, { weekday: "long" }).toUpperCase()}</span><strong>{new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong></div><div className="hero-progress"><div className="progress-line"><span style={{ width: `${completion}%` }} /></div><small>{completion}% DAILY CONSISTENCY</small></div></div>
@@ -190,15 +266,22 @@ function Dashboard({ user, data, greeting, pending, onNavigate, onRefresh, onFla
       </section>
       <section className="areas-card panel"><div className="area-orb"><div className="orb-face" /></div><div className="areas-content"><span className="eyebrow">YOUR NORTH STAR</span><h3>Areas of <em>life</em></h3><p>Small steps, across the things that matter.</p><div className="area-pills">{(user.goals?.length ? user.goals.slice(0, 3) : ["Wellbeing", "Growth", "Balance"]).map((goal) => <span key={goal}><i />{goal}</span>)}</div></div><button className="area-edit" onClick={() => onNavigate("profile")}><ArrowUpRight size={15} /></button></section>
       <section className="panel schedule-card"><div className="section-heading"><div><span className="eyebrow">YOUR ROUTINE</span><h3>Today's rhythm</h3></div><button className="text-link" onClick={() => onNavigate("routines")}>See all <ArrowUpRight size={14} /></button></div>
-        {(today?.items || []).length ? <div className="routine-list">{today.items.slice(0, 4).map(({ routine, status }, index) => <button className={`routine-row ${status === "done" ? "is-done" : ""}`} key={routine._id} onClick={() => onNavigate("routines")}><span className={`routine-time time-${routine.timeOfDay || "anytime"}`}>{routine.timeOfDay === "anytime" ? "ANY" : routine.timeOfDay?.slice(0, 3).toUpperCase()}</span><span className="routine-color" style={{ "--row-color": ["#ff7545", "#d5b17e", "#8fa391", "#bd8a68"][index % 4] }} /><span className="routine-copy"><strong>{routine.title}</strong><small>{routine.category || "Personal"} · {routine.reminderTime || "Your own pace"}</small></span><span className={`check-circle ${status === "done" ? "checked" : ""}`}>{status === "done" ? <Check size={13} /> : ""}</span></button>)}</div> : <div className="empty-card"><CalendarDays size={22} /><span>No routines planned yet.</span><button className="text-link" onClick={() => onNavigate("routines")}>Create your first routine <ArrowUpRight size={14} /></button></div>}
+        {(today?.items || []).length ? <div className="routine-list">{today.items.map(({ routine, status }, index) => <button className={`routine-row ${status === "done" ? "is-done" : ""}`} key={routine._id} onClick={() => onNavigate("routines")}><span className={`routine-time time-${routine.timeOfDay || "anytime"}`}>{routine.timeOfDay === "anytime" ? "ANY" : routine.timeOfDay?.slice(0, 3).toUpperCase()}</span><span className="routine-color" style={{ "--row-color": ["#ff7545", "#d5b17e", "#8fa391", "#bd8a68"][index % 4] }} /><span className="routine-copy"><strong>{routine.title}</strong><small>{routine.category || "Personal"} · {routine.reminderTime || "Your own pace"}</small></span><span className={`check-circle ${status === "done" ? "checked" : ""}`}>{status === "done" ? <Check size={13} /> : ""}</span></button>)}</div> : <div className="empty-card"><CalendarDays size={22} /><span>No routines planned yet.</span><button className="text-link" onClick={() => onNavigate("routines")}>Create your first routine <ArrowUpRight size={14} /></button></div>}
       </section>
       <section className="panel score-card"><div className="section-heading"><div><span className="eyebrow">CONSISTENCY</span><h3>Your momentum</h3></div><Activity size={17} className="muted-icon" /></div><div className="score-main"><span>{analytics?.weekly?.completionRate ?? completion}<small>%</small></span><div className="score-ring" style={{ "--score": `${analytics?.weekly?.completionRate ?? completion}%` }}><Target size={21} /></div></div><p className="score-caption">weekly follow-through</p><div className="score-stats"><div><strong>{data.dashboard?.streak?.best || 0}</strong><span>Best streak</span></div><div><strong>{analytics?.weekly?.completedDays || doneToday}</strong><span>Days completed</span></div></div><button className="button dark-button full" onClick={() => onNavigate("routines")}>Explore progress <ArrowUpRight size={15} /></button></section>
       <section className="panel tasks-card"><div className="section-heading"><div><span className="eyebrow">MAKE IT HAPPEN</span><h3>Priority tasks</h3></div><button className="text-link" onClick={() => onNavigate("tasks")}>All tasks <ArrowUpRight size={14} /></button></div>
-        {recentTasks.length ? <div className="task-list compact">{recentTasks.map((task) => <div className="task-row" key={task._id}><span className={`priority-dot ${task.priority}`} /><span className="task-copy"><strong>{task.title}</strong><small>{task.deadline ? `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : "No deadline"}</small></span><span className={`priority-label ${task.priority}`}>{task.priority}</span></div>)}</div> : <div className="empty-note">Nothing pending. A good place to be.</div>}
+        {tasks.length ? <div className="task-list compact">{tasks.map((task) => <div className={`task-row ${task.status === "completed" ? "is-complete" : ""}`} key={task._id}><span className={`priority-dot ${task.priority}`} /><span className="task-copy"><strong>{task.title}</strong><small>{task.status === "completed" ? "Completed" : task.deadline ? `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : "No deadline"}</small></span><span className={`priority-label ${task.status === "completed" ? "completed" : task.priority}`}>{task.status === "completed" ? "Done" : task.priority}</span></div>)}</div> : <div className="empty-note">No tasks yet. Add one when you're ready.</div>}
         <div className="quote-box"><span className="quote-mark">“</span><span>{quote || quoteError || "A little progress each day adds up to big results."}</span></div>
       </section>
       <section className="assistant-promo panel"><div className="assistant-promo-head"><span className="ai-label">AI</span><span className="eyebrow">YOUR AI COMPANION</span><button className="text-link" onClick={() => onNavigate("assistant")}>Open chat <ArrowUpRight size={14} /></button></div><h3>A plan that fits <em>your life.</em></h3><p>Ask about your progress, get a realistic schedule, or turn a thought into a task.</p><button className="button ai-button full" onClick={() => onNavigate("assistant")}><MessageCircle size={15} /> Ask your assistant</button><div className="ai-suggestion"><span>TRY ASKING</span> “How am I doing this week?”</div></section>
     </div>
+    <section className="panel dashboard-daily-note">
+      <div className="dashboard-note-heading"><div><span className="eyebrow">A NOTE FOR TODAY</span><h2>Save a thought from your day.</h2><p>Your note will be saved to today and available from that date in History.</p></div><span className="dashboard-note-date">{dateFromKey(todayDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></div>
+      {noteLoading ? <p className="dashboard-note-status">Loading today's note…</p> : <>
+        <textarea aria-label="Today's note" value={dailyNote} onChange={(event) => setDailyNote(event.target.value)} maxLength={1000} placeholder="What would you like to remember about today?" />
+        <div className="dashboard-note-actions">{noteError && <span role="alert">{noteError}</span>}<small>{dailyNote.length}/1000</small><button className="button primary" type="button" onClick={saveDailyNote} disabled={noteSaving}><Save size={14} />{noteSaving ? "Saving…" : "Save today's note"}</button></div>
+      </>}
+    </section>
   </div>;
 }
 
@@ -214,6 +297,146 @@ function Tasks({ tasks, onRefresh, onFlash }) {
   const update = async (task, patch) => { try { await request(`/tasks/${task._id}`, json("PATCH", patch)); onRefresh(); } catch (error) { onFlash(error.message); } };
   const renderTask = (task) => <div className={`task-card ${task.status === "completed" ? "finished" : ""}`} key={task._id}><button className={`task-check ${task.status === "completed" ? "done" : ""}`} onClick={() => update(task, { status: task.status === "completed" ? "pending" : "completed" })}>{task.status === "completed" && <Check size={15} />}</button><div className="task-card-copy"><strong>{task.title}</strong>{task.description && <p>{task.description}</p>}<small>{task.deadline ? `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : "No deadline"}</small></div><select className={`priority-select ${task.priority}`} aria-label="Task priority" value={task.priority} onChange={(e) => update(task, { priority: e.target.value })}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><button className="icon-button quiet" aria-label="Delete task" onClick={async () => { try { await request(`/tasks/${task._id}`, { method: "DELETE" }); onRefresh(); } catch (error) { onFlash(error.message); } }}><X size={15} /></button></div>;
   return <><PageTitle eyebrow="YOUR FOCUS" title="Tasks that move you forward." subtitle="A clear list turns good intentions into small, doable steps." /><form className="task-create panel" onSubmit={addTask}><div className="create-input"><Plus size={18} /><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="What's one thing you want to get done?" required maxLength={160} /></div><input type="date" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} aria-label="Deadline" /><select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></select><button className="button primary"><Plus size={15} /> Add task</button></form><div className="task-columns"><section><div className="list-title"><span className="list-marker orange" /><h3>In progress</h3><span className="count-badge">{pending.length}</span></div>{pending.length ? pending.map(renderTask) : <div className="panel empty-state"><CheckCheck size={22} /><strong>Nothing on your plate.</strong><span>Add a task above or ask your AI assistant to help plan.</span></div>}</section><section><div className="list-title"><span className="list-marker green" /><h3>Completed</h3><span className="count-badge">{complete.length}</span></div>{complete.length ? complete.map(renderTask) : <div className="panel empty-state"><span>Your finished tasks will show up here.</span></div>}</section></div></>;
+}
+
+const calendarDateKey = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+const dateFromKey = (date) => {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const shiftDate = (date, days) => {
+  const shifted = new Date(date);
+  shifted.setDate(shifted.getDate() + days);
+  return shifted;
+};
+
+const historyStatusLabels = {
+  completed: "Complete",
+  partial: "Partial",
+  missed: "Missed",
+  pending: "In progress",
+  skipped: "Skipped",
+  upcoming: "Upcoming",
+  none: "No routines",
+};
+
+function HistoryPage() {
+  const today = localDate();
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [summaries, setSummaries] = useState([]);
+  const [day, setDay] = useState(null);
+  const [note, setNote] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [dayLoading, setDayLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+  const [dayError, setDayError] = useState("");
+  const monthStart = calendarDateKey(month);
+  const calendarStart = shiftDate(month, -month.getDay());
+  const calendarEnd = shiftDate(calendarStart, 41);
+  const calendarDays = Array.from({ length: 42 }, (_, index) => shiftDate(calendarStart, index));
+
+  useEffect(() => {
+    let active = true;
+    setHistoryLoading(true);
+    setHistoryError("");
+    request(`/logs/history?from=${calendarDateKey(calendarStart)}&to=${calendarDateKey(calendarEnd)}&today=${today}`)
+      .then((result) => { if (active) setSummaries(result.days || []); })
+      .catch((error) => { if (active) setHistoryError(error.message); })
+      .finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [monthStart, today]);
+
+  useEffect(() => {
+    let active = true;
+    setDayLoading(true);
+    setDayError("");
+    Promise.all([
+      request(`/logs/day?date=${selectedDate}`),
+      request(`/logs/note?date=${selectedDate}`),
+    ]).then(([dayResult, noteResult]) => {
+      if (!active) return;
+      setDay(dayResult);
+      setNote(noteResult.note || "");
+    }).catch((error) => {
+      if (active) setDayError(error.message);
+    }).finally(() => { if (active) setDayLoading(false); });
+    return () => { active = false; };
+  }, [selectedDate]);
+
+  const summaryByDate = new Map(summaries.map((summary) => [summary.date, summary]));
+  return <>
+    <PageTitle eyebrow="YOUR PROGRESS, DAY BY DAY" title="Your history." subtitle="See how your routines are going. Select any day to revisit its routines and save a note." />
+    <div className="history-layout">
+      <section className="panel history-calendar">
+        <div className="history-calendar-heading">
+          <div><span className="eyebrow">ROUTINE CALENDAR</span><h2>{month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2></div>
+          <div className="history-month-actions">
+            <button className="icon-button quiet" type="button" aria-label="Previous month" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><ChevronLeft size={17} /></button>
+            <button className="icon-button quiet" type="button" aria-label="Next month" onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}><ChevronRight size={17} /></button>
+          </div>
+        </div>
+        <div className="history-weekdays" aria-hidden="true">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => <span key={weekday}>{weekday}</span>)}</div>
+        <div className="history-calendar-grid" aria-busy={historyLoading}>
+          {calendarDays.map((date) => {
+            const dateKey = calendarDateKey(date);
+            const summary = summaryByDate.get(dateKey);
+            const status = summary?.status || "none";
+            const label = historyStatusLabels[status] || status;
+            return <button
+              className={`history-day ${date.getMonth() !== month.getMonth() ? "outside-month" : ""} ${dateKey === selectedDate ? "selected" : ""} ${dateKey === today ? "today" : ""} status-${status}`}
+              type="button"
+              key={dateKey}
+              onClick={() => setSelectedDate(dateKey)}
+              aria-label={`${date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}: ${label}${summary?.total ? `, ${summary.done} of ${summary.total} routines complete` : ""}`}
+              aria-pressed={dateKey === selectedDate}
+            >
+              <span>{date.getDate()}</span>
+              {summary?.total > 0 && <small>{summary.done}/{summary.total}</small>}
+              {summary?.total > 0 && <i aria-hidden="true" />}
+            </button>;
+          })}
+        </div>
+        <div className="history-legend">
+          <span><i className="status-completed" />Complete</span>
+          <span><i className="status-partial" />Partial</span>
+          <span><i className="status-missed" />Missed</span>
+          <span><i className="status-upcoming" />Upcoming</span>
+        </div>
+        {historyError && <div className="history-error" role="alert">Could not load calendar: {historyError}</div>}
+      </section>
+
+      <section className="panel history-day-detail">
+        <div className="history-detail-heading">
+          <div><span className="eyebrow">DAY DETAILS</span><h2>{dateFromKey(selectedDate).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</h2></div>
+          {day && <span className="history-day-percent">{day.percent}%</span>}
+        </div>
+        {dayLoading ? <div className="history-message">Loading this day's routines…</div> : dayError ? <div className="history-error" role="alert">{dayError}</div> : <>
+          <p className="history-day-summary">{day?.done || 0} of {day?.total || 0} routines completed</p>
+          {day?.items?.length ? <div className="history-routine-list">
+            {day.items.map((item) => <article className="history-routine" key={item.routine._id}>
+              <span className={`history-routine-check ${item.status}`} aria-hidden="true">{item.status === "done" ? <Check size={13} /> : null}</span>
+              <div><strong>{item.routine.title}</strong><small>{item.routine.category} · {item.routine.timeOfDay} · {item.routine.repeatType}</small>
+                {item.routine.description && <p>{item.routine.description}</p>}
+                {item.note && <p className="history-routine-note">Note: {item.note}</p>}
+              </div>
+              <span className={`history-routine-status ${item.status}`}>{item.status === "done" ? `${item.amount}/${item.routine.normalTarget || 1}` : item.status}</span>
+            </article>)}
+          </div> : <div className="history-message">No routines were scheduled for this day.</div>}
+          <div className="history-note">
+            <span className="eyebrow">DAILY NOTE</span>
+            {note ? <p className="history-saved-note">{note}</p> : <p className="history-no-note">No note was saved for this day.</p>}
+          </div>
+        </>}
+      </section>
+    </div>
+  </>;
 }
 
 function Routines({ routines, today, onRefresh, onFlash }) {
@@ -260,10 +483,10 @@ function Routines({ routines, today, onRefresh, onFlash }) {
     } catch (error) { onFlash(error.message); }
     finally { setBundleBusy(false); }
   };
-  const openCreate = (template = null) => {
+  const openCreate = () => {
     setBundleEditor(null);
     setEditing(null);
-    setDraft(template ? { ...emptyDraft, ...template } : emptyDraft);
+    setDraft(emptyDraft);
     setShowForm(true);
   };
   const openEdit = (routine) => {
@@ -322,11 +545,8 @@ function Routines({ routines, today, onRefresh, onFlash }) {
     {!showForm && !bundleEditor && <section className="routine-templates">
       <div className="routine-templates-heading"><div><span className="eyebrow">READY-MADE ROUTINE PLANS</span><h2>A good place to begin.</h2><p>Choose a complete plan, make it yours, and change anything before saving.</p></div><span className="template-total">3 plans · fully editable</span></div>
       <div className="template-grid bundle-template-grid">{routineTemplates.map((template) => <article className={`routine-template glass-surface bundle-template ${template.id}`} key={template.id}>
-        <div className="template-card-top"><span className={`template-symbol ${template.id}`} aria-hidden="true">{template.icon}</span><span className="template-category">{template.routines.length} routines</span><span className="template-card-arrow" aria-hidden="true">↗</span></div>
         <h3>{template.title}</h3>
-        <p>{template.subtitle}</p>
-        <ul className="bundle-preview-list">{template.routines.map((routine) => <li key={routine.title}><Check size={14} /><span>{routine.title}</span></li>)}</ul>
-        <button type="button" className="template-use" onClick={() => openBundle(template)}><span>Use this plan</span><span aria-hidden="true">→</span></button>
+        <button type="button" className="template-use" onClick={() => openBundle(template)}>Use</button>
       </article>)}</div>
     </section>}
     {bundleEditor && <form className="bundle-editor panel" onSubmit={submitBundle}>
@@ -584,11 +804,15 @@ function Profile({ user, onUpdate, onFlash, onLogout }) {
   const [name, setName] = useState(user.name);
   const [bio, setBio] = useState(user.bio || "");
   const [goals, setGoals] = useState((user.goals || []).join(", "));
+  const [colorTheme, setColorTheme] = useState(() => document.documentElement.dataset.theme || "orange");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState({ avatar: false, wallpaper: false });
   const [removingWallpaper, setRemovingWallpaper] = useState(false);
   const avatarInput = useRef(null);
   const wallpaperInput = useRef(null);
+  const changeColorTheme = (theme) => {
+    if (saveColorTheme(theme, user.id || user._id)) setColorTheme(theme);
+  };
   const save = async (event) => {
     event.preventDefault(); setBusy(true);
     try { const result = await request("/profile", json("PATCH", { name, bio, goals })); onUpdate(result.user); onFlash("Your profile is up to date."); }
@@ -665,7 +889,30 @@ function Profile({ user, onUpdate, onFlash, onLogout }) {
           </div>
         </div>
       </form>
-      <aside className="panel privacy-panel"><span className="ai-label">YOU</span><span className="eyebrow">YOUR SPACE, YOUR RULES</span><h3>Private by default.</h3><p>Your profile photo and bio help friends recognize you. Friends see your consistency summary only—not your routines, tasks, or deadlines.</p><div className="privacy-item"><Check size={14} /> Your tasks and deadlines stay private</div><div className="privacy-item"><Check size={14} /> Your routines stay private</div><div className="privacy-item"><Check size={14} /> You choose your dashboard wallpaper</div></aside>
+      <div className="profile-side-panels">
+        <section className="panel appearance-panel">
+          <Palette size={19} />
+          <span className="eyebrow">MAKE IT YOURS</span>
+          <h3>Color theme</h3>
+          <p>Choose a coordinated color palette for every part of your workspace.</p>
+          <div className="accent-theme-options color-theme-options" role="group" aria-label="Choose a color theme">
+            {colorThemes.map(({ id: theme, label, color }) => (
+              <button
+                className={`accent-theme-option ${colorTheme === theme ? "selected" : ""}`}
+                type="button"
+                key={theme}
+                onClick={() => onColorThemeChange(theme)}
+                aria-pressed={colorTheme === theme}
+              >
+                <span className="accent-theme-swatch" style={{ "--swatch-color": color }} />
+                {label}
+                {colorTheme === theme && <Check size={14} />}
+              </button>
+            ))}
+          </div>
+        </section>
+        <aside className="panel privacy-panel"><span className="ai-label">YOU</span><span className="eyebrow">YOUR SPACE, YOUR RULES</span><h3>Private by default.</h3><p>Your profile photo and bio help friends recognize you. Friends see your consistency summary only—not your routines, tasks, or deadlines.</p><div className="privacy-item"><Check size={14} /> Your tasks and deadlines stay private</div><div className="privacy-item"><Check size={14} /> Your routines stay private</div><div className="privacy-item"><Check size={14} /> You choose your dashboard wallpaper</div></aside>
+      </div>
     </div>
   </>;
 }

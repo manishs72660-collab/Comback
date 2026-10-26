@@ -1,5 +1,7 @@
-import { ArrowRight, ArrowUpRight, Check, Play, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { ArrowRight, ArrowUpRight, Check, Palette, Play, Sparkles, X } from "lucide-react";
 import BrandLogo from "../components/BrandLogo";
+import { colorThemes, saveColorTheme, validTheme } from "../utils/themes";
 
 const highlights = [
   { number: "01", title: "Make a little space", copy: "Routines shaped around your real life—not an ideal version of it." },
@@ -41,11 +43,29 @@ function FloatingCards() {
 }
 
 export default function LandingPage({ onAuth }) {
+  const [colorTheme, setColorTheme] = useState(() => {
+    const savedTheme = window.localStorage.getItem("comeback-theme") || document.documentElement.dataset.theme;
+    return validTheme(savedTheme) ? savedTheme : "orange";
+  });
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const selectColorTheme = (theme) => {
+    if (saveColorTheme(theme)) setColorTheme(theme);
+  };
+
   return (
     <main className="landing-page">
       <nav className="landing-nav">
         <a className="landing-brand" href="#home" aria-label="Comeback home"><BrandLogo /></a>
         <div className="landing-links"><a href="#approach">Our approach</a><a href="#features">A gentler routine</a></div>
+        <div className="landing-theme-control">
+          <button className="landing-theme-trigger" type="button" aria-expanded={themePickerOpen} aria-controls="landing-theme-picker" onClick={() => setThemePickerOpen((open) => !open)}><Palette size={16} /><span>Colors</span></button>
+          {themePickerOpen && <div className="landing-theme-picker" id="landing-theme-picker" aria-label="Choose a color theme">
+            <div className="landing-theme-picker-heading"><strong>Choose a color</strong><button type="button" aria-label="Close color themes" onClick={() => setThemePickerOpen(false)}><X size={15} /></button></div>
+            {colorThemes.map(({ id, label, color }) => <button type="button" key={id} className={`landing-theme-option ${colorTheme === id ? "selected" : ""}`} onClick={() => selectColorTheme(id)} aria-pressed={colorTheme === id}>
+              <span className="landing-theme-swatch" style={{ "--swatch-color": color }}>{colorTheme === id && <Check size={12} />}</span><span>{label}</span>{colorTheme === id && <Check className="landing-theme-selected" size={15} />}
+            </button>)}
+          </div>}
+        </div>
         <div className="landing-nav-actions"><button className="landing-login" onClick={() => onAuth("login")}>Log in</button><button className="button landing-cta" onClick={() => onAuth("register")}>Start your comeback <ArrowUpRight size={16} /></button></div>
         <button className="landing-mobile-menu" aria-label="Start your comeback" onClick={() => onAuth("register")}>Get started <ArrowUpRight size={15} /></button>
       </nav>

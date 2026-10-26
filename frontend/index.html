@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#11100f" />
     <meta name="description" content="Comeback — build consistency, one day at a time." />
+    <script>
+      (() => {
+        const themes = ["orange", "purple", "emerald", "ocean-blue", "rose-pink"];
+        try {
+          const theme = localStorage.getItem("comeback-theme");
+          document.documentElement.dataset.theme = themes.includes(theme) ? theme : "orange";
+        } catch {
+          document.documentElement.dataset.theme = "orange";
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Rubik+Storm&display=swap" rel="stylesheet" />
