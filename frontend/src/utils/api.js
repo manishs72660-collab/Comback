@@ -1,7 +1,11 @@
-export const API = (
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? "http://localhost:3000" : "")
-).replace(/\/$/, "");
+const productionApi = "https://comback-u5j5.onrender.com";
+const configuredApi = import.meta.env.VITE_API_URL?.replace(/\/$/, "");
+const pointsToFrontend = !import.meta.env.DEV && configuredApi &&
+  new URL(configuredApi, window.location.origin).origin === window.location.origin;
+
+export const API = pointsToFrontend
+  ? productionApi
+  : configuredApi || (import.meta.env.DEV ? "http://localhost:3000" : productionApi);
 
 export async function request(path, options = {}, canRefresh = true) {
   const isForm = options.body instanceof FormData;
