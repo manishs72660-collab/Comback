@@ -1,4 +1,7 @@
-export const API = (import.meta.env.VITE_API_URL || "https://comback-eight.vercel.app/").replace(/\/$/, "");
+export const API = (
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:3000" : "")
+).replace(/\/$/, "");
 
 export async function request(path, options = {}, canRefresh = true) {
   const isForm = options.body instanceof FormData;

@@ -1,25 +1,14 @@
 require("dotenv").config();
 require("node:dns/promises").setServers(["1.1.1.1", "8.8.8.8"]);
 
-const express = require("express");
 const http = require("http");
-const cookieParser = require("cookie-parser");
-const cors = require("cors");
 const { Server } = require("socket.io");
 
 const client = require("./config/redis");
 const main = require("./config/db");
 const { corsOptions } = require("./config/cors");
 
-const authRouter = require("./routes/auth.routes");
-const routineRouter = require("./routes/Routine.routes");
-const logRouter = require("./routes/Log.routes");
-const dashboardRouter = require("./routes/Dashboard.routes");
-const analyticsRouter = require("./routes/Analytics.routes");
-const profileRouter = require("./routes/Profile.routes");
-const socialRouter = require("./routes/Social.routes");
-const taskRouter = require("./routes/Task.routes");
-const assistantRouter = require("./routes/Assistant.routes");
+const app = require("./app");
 const Message = require("./models/Message.models");
 const Notification = require("./models/Notification.models");
 const Follow = require("./models/Follow.models");
@@ -27,13 +16,8 @@ const User = require("./models/user.models");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 
-const app = express();
 const server = http.createServer(app);
 
-app.use(cors(corsOptions));
-
-app.use(express.json());
-app.use(cookieParser());
 const io = new Server(server, {
   cors: corsOptions,
 });
@@ -88,21 +72,6 @@ io.on("connection", (socket) => {
     }
   });
 });
-
-app.get("/", (req, res) => {
-  res.json({ message: "comeback" });
-});
-
-// Routes
-app.use("/auth", authRouter);
-app.use("/routines", routineRouter);
-app.use("/logs", logRouter);
-app.use("/dashboard", dashboardRouter);
-app.use("/analytics", analyticsRouter);
-app.use("/profile", profileRouter);
-app.use("/social", socialRouter);
-app.use("/tasks", taskRouter);
-app.use("/assistant", assistantRouter);
 
 const InitlizeConnection = async () => {
   try {
