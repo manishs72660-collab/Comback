@@ -4,12 +4,17 @@ import { API, request, json } from "../utils/api";
 import { localDate } from "../utils/date";
 import Avatar from "../components/Avatar";
 import BrandLogo from "../components/BrandLogo";
+import { PwaInstallButton, PwaNetworkStatus, usePwa } from "../components/PwaProvider";
+import {
+  clearAccountOfflineData, createTaskMutation, getTaskMutations, getWorkspaceSnapshot,
+  removeTaskMutation, saveTaskMutation, saveWorkspaceSnapshot,
+} from "../utils/offlineStore";
 import { applyColorTheme, colorThemes, saveColorTheme, validTheme } from "../utils/themes";
 import {
   Activity, ArrowUpRight, Bell, CalendarDays, Check, CheckCheck,
   ChevronDown, ChevronLeft, ChevronRight, CircleHelp, Flame, History as HistoryIcon,
   ImagePlus, LayoutDashboard, ListTodo, Menu, MessageCircle, MoreHorizontal, Palette,
-  Pause, Pencil, Play, Plus, Save, Search, Send, Settings2, SlidersHorizontal, Sparkles, Target,
+  Pause, Pencil, Play, Plus, RefreshCw, Save, Search, Send, Settings2, SlidersHorizontal, Sparkles, Target,
   Trash2, UserRound, Users, X,
 } from "lucide-react";
 
@@ -72,6 +77,10 @@ export default function Workspace({ initialUser, onLogout }) {
   const [user, setUser] = useState(initialUser);
   const [view, setView] = useState("dashboard");
   const [data, setData] = useState({ dashboard: null, routines: [], tasks: [], notifications: [], friends: [], followers: [], connectionCounts: { followers: 0, following: 0 }, conversations: [], analytics: null });
+  const [taskMutations, setTaskMutations] = useState([]);
+  const [syncingTasks, setSyncingTasks] = useState(false);
+  const [syncError, setSyncError] = useState("");
+  const [syncMessage, setSyncMessage] = useState("");
   const [dataError, setDataError] = useState("");
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
@@ -79,8 +88,13 @@ export default function Workspace({ initialUser, onLogout }) {
   const [collapsed, setCollapsed] = useState(false);
   const [selectedFriend, setSelectedFriend] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const { online } = usePwa();
+  const accountId = String(user.id || user._id);
+  const syncingTasksRef = useRef(false);
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
   const flash = useCallback((message) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); }, []);
+  const accountIdRef = useRef(accountId);
+  const signedOutRef = useRef(false);
   useLayoutEffect(() => {
     const userId = initialUser.id || initialUser._id;
     const savedTheme = window.localStorage.getItem(`comeback-theme:${userId}`) || window.localStorage.getItem("comeback-theme");
@@ -92,33 +106,155 @@ export default function Workspace({ initialUser, onLogout }) {
   useEffect(() => {
     if (!user) return;
     let active = true;
-    Promise.all([
-      request(`/dashboard?date=${localDate()}`), request("/routines"),
-      request("/tasks"), request("/social/notifications"),
-      request("/social/following"), request("/social/followers"),
-      request("/social/connections/counts"), request("/social/conversations"), request("/analytics"),
-    ]).then(([dashboard, routines, tasks, notifications, friends, followers, connectionCounts, conversations, analytics]) => {
-      if (active) setDataError("");
-      if (active) setData({ dashboard, routines: routines?.routines || [], tasks: tasks?.tasks || [], notifications: notifications?.notifications || [], unread: notifications?.unread || 0, friends: friends?.users || [], followers: followers?.users || [], connectionCounts: { followers: connectionCounts?.followers || 0, following: connectionCounts?.following || 0 }, conversations: conversations?.conversations || [], analytics });
-    }).catch((error) => {
-      if (active) {
-        setDataError(error.message);
-        if (error.status === 401 || /authentication|session/i.test(error.message)) onLogout();
+    const loadWorkspace = async () => {
+      let cachedSnapshot = null;
+      try {
+        const [snapshot, mutations] = await Promise.all([
+          getWorkspaceSnapshot(accountId),
+          getTaskMutations(accountId),
+        ]);
+        if (!active || signedOutRef.current) return;
+        cachedSnapshot = snapshot;
+        setTaskMutations(mutations);
+        if (snapshot) setData((current) => ({ ...current, dashboard: snapshot.dashboard, routines: snapshot.routines, tasks: snapshot.tasks }));
+      } catch (error) {
+        console.error("Unable to load cached workspace data:", error);
+        if (active) setSyncError(error.message);
       }
-    }).finally(() => { if (active) setLoading(false); });
+
+      if (!online) {
+        if (active) {
+          setDataError(cachedSnapshot ? "" : "No saved dashboard is available offline yet.");
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const [dashboard, routines, tasks, notifications, friends, followers, connectionCounts, conversations, analytics] = await Promise.all([
+          request(`/dashboard?date=${localDate()}`), request("/routines"),
+          request("/tasks"), request("/social/notifications"),
+          request("/social/following"), request("/social/followers"),
+          request("/social/connections/counts"), request("/social/conversations"), request("/analytics"),
+        ]);
+        const nextData = {
+          dashboard,
+          routines: routines?.routines || [],
+          tasks: tasks?.tasks || [],
+          notifications: notifications?.notifications || [],
+          unread: notifications?.unread || 0,
+          friends: friends?.users || [],
+          followers: followers?.users || [],
+          connectionCounts: { followers: connectionCounts?.followers || 0, following: connectionCounts?.following || 0 },
+          conversations: conversations?.conversations || [],
+          analytics,
+        };
+        if (!active || signedOutRef.current) return;
+        setDataError("");
+        setData(nextData);
+        try {
+          await saveWorkspaceSnapshot(accountId, { dashboard, routines: nextData.routines, tasks: nextData.tasks });
+        } catch (storageError) {
+          console.error("Unable to cache the latest workspace data:", storageError);
+        }
+      } catch (error) {
+        if (!active || signedOutRef.current) return;
+        if (error.status === 401 || /authentication|session/i.test(error.message)) {
+          signedOutRef.current = true;
+          await clearAccountOfflineData(accountId).catch((storageError) => console.error("Unable to clear expired account cache:", storageError));
+          onLogout();
+        } else {
+          setDataError(error.status === undefined ? "You are offline. Showing your last saved dashboard." : error.message);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void loadWorkspace();
     return () => { active = false; };
-  }, [user, refreshKey, onLogout]);
+  }, [accountId, online, refreshKey, onLogout, user]);
+
+  accountIdRef.current = accountId;
+  const syncPendingTasks = useCallback(async () => {
+    if (!online || syncingTasksRef.current || signedOutRef.current || accountIdRef.current !== accountId) return;
+    syncingTasksRef.current = true;
+    setSyncingTasks(true);
+    setSyncError("");
+    setSyncMessage("");
+    let syncedCount = 0;
+    try {
+      const mutations = await getTaskMutations(accountId);
+      for (const mutation of mutations) {
+        if (signedOutRef.current || accountIdRef.current !== accountId) break;
+        const syncingMutation = { ...mutation, state: "syncing", error: "" };
+        await saveTaskMutation(syncingMutation);
+        setTaskMutations((current) => current.map((item) => item.id === mutation.id ? syncingMutation : item));
+        try {
+          const result = await request("/tasks", json("POST", {
+            ...mutation.payload,
+            clientMutationId: mutation.id,
+            expectedAccountId: accountId,
+          }));
+          await removeTaskMutation(mutation.id);
+          setTaskMutations((current) => current.filter((item) => item.id !== mutation.id));
+          setData((current) => ({
+            ...current,
+            tasks: [{ ...result.task, localSyncState: "synced" }, ...current.tasks.filter((task) => task.clientMutationId !== mutation.id && task._id !== result.task._id)],
+          }));
+          syncedCount += 1;
+        } catch (error) {
+          const failedMutation = {
+            ...mutation,
+            state: "failed",
+            attempts: (mutation.attempts || 0) + 1,
+            error: error.message,
+          };
+          await saveTaskMutation(failedMutation);
+          setTaskMutations((current) => current.map((item) => item.id === mutation.id ? failedMutation : item));
+          if (error.status === 401) {
+            signedOutRef.current = true;
+            await clearAccountOfflineData(accountId).catch((storageError) => console.error("Unable to clear expired account cache:", storageError));
+            onLogout();
+            break;
+          }
+          setSyncError(error.message);
+        }
+      }
+      if (syncedCount) setSyncMessage(`${syncedCount} ${syncedCount === 1 ? "task" : "tasks"} synced.`);
+    } catch (error) {
+      setSyncError(error.message);
+    } finally {
+      syncingTasksRef.current = false;
+      setSyncingTasks(false);
+    }
+  }, [accountId, online, onLogout]);
+
+  const queueTask = useCallback(async (payload) => {
+    const mutation = await createTaskMutation(accountId, payload);
+    setTaskMutations((current) => [...current, mutation]);
+    return mutation;
+  }, [accountId]);
 
   useEffect(() => {
-    if (!user) return;
+    if (online && taskMutations.length > 0) void syncPendingTasks();
+  }, [online, taskMutations.length, syncPendingTasks]);
+
+  useEffect(() => {
+    if (!user || !online) return;
     const socket = io(API, { withCredentials: true, transports: ["websocket", "polling"] });
     socket.on("notification:new", (notification) => {
       setData((current) => ({ ...current, notifications: [notification, ...current.notifications], unread: (current.unread || 0) + 1 }));
     });
     return () => socket.disconnect();
-  }, [user]);
+  }, [online, user]);
 
   const signOut = async () => {
+    signedOutRef.current = true;
+    try {
+      await clearAccountOfflineData(accountId);
+    } catch (error) {
+      flash(`Could not clear this account's offline cache: ${error.message}`);
+    }
     try { await request("/auth/logout", { method: "POST" }); } catch (err) { flash(err.message); }
     onLogout();
   };
@@ -136,6 +272,18 @@ export default function Workspace({ initialUser, onLogout }) {
   if (loading) return <div className="loading-screen"><BrandLogo compact /><div className="loader" /></div>;
 
   const dashboard = data.dashboard;
+  const allTasks = [
+    ...data.tasks,
+    ...taskMutations
+      .filter((mutation) => !data.tasks.some((task) => task.clientMutationId === mutation.id))
+      .map((mutation) => ({
+        ...mutation.payload,
+        _id: `offline:${mutation.id}`,
+        clientMutationId: mutation.id,
+        status: "pending",
+        localSyncState: mutation.state,
+      })),
+  ];
   const greeting = new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 18 ? "Good afternoon" : "Good evening";
 
   return <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -150,7 +298,7 @@ export default function Workspace({ initialUser, onLogout }) {
       </div>
     </aside>
     <main className="main-area">
-      <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span>/</span><strong>{menu.find((item) => item.id === view)?.label || "Settings"}</strong></div><div className="top-actions"><span className="date-chip"><span className="live-dot" /> {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span><button className={`icon-button notification-button ${notificationOpen ? "selected" : ""}`} onClick={() => { setNotificationOpen(!notificationOpen); if (!notificationOpen) request("/social/notifications/read", { method: "PATCH" }).then(() => setData((d) => ({ ...d, unread: 0 }))).catch((e) => flash(e.message)); }}><Bell size={18} />{data.unread > 0 && <b>{data.unread}</b>}</button><button className="top-profile" onClick={() => setView("profile")}><Avatar user={user} size="small" /><span className="user-name-rubik">{user.name.split(" ")[0]}</span><ChevronDown size={14} /></button></div>
+      <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span>/</span><strong>{menu.find((item) => item.id === view)?.label || "Settings"}</strong></div><div className="top-actions"><PwaNetworkStatus /><PwaInstallButton iconOnly /><span className="date-chip"><span className="live-dot" /> {new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span><button className={`icon-button notification-button ${notificationOpen ? "selected" : ""}`} onClick={() => { setNotificationOpen(!notificationOpen); if (!notificationOpen) request("/social/notifications/read", { method: "PATCH" }).then(() => setData((d) => ({ ...d, unread: 0 }))).catch((e) => flash(e.message)); }}><Bell size={18} />{data.unread > 0 && <b>{data.unread}</b>}</button><button className="top-profile" onClick={() => setView("profile")}><Avatar user={user} size="small" /><span className="user-name-rubik">{user.name.split(" ")[0]}</span><ChevronDown size={14} /></button></div>
         {notificationOpen && <div className="notification-popover"><div className="popover-title">Notifications <button onClick={() => setNotificationOpen(false)} aria-label="Close notifications"><X size={14} /></button></div>{data.notifications.length ? data.notifications.slice(0, 8).map((item) => <div className={`notification-row ${item.actorId ? "actionable" : ""}`} key={item._id}>
           {item.actorId ? <button className="notification-open" onClick={() => {
             if (item.type === "message") {
@@ -166,8 +314,8 @@ export default function Workspace({ initialUser, onLogout }) {
       </header>
       <section className="page-content">
         {dataError && <div className="load-error"><CircleHelp size={16} />We couldn't load your latest data: {dataError}<button onClick={refresh}>Try again</button></div>}
-        {view === "dashboard" && <Dashboard user={user} data={data} greeting={greeting} tasks={data.tasks} onNavigate={setView} onRefresh={refresh} onFlash={flash} />}
-        {view === "tasks" && <Tasks tasks={data.tasks} onRefresh={refresh} onFlash={flash} />}
+        {view === "dashboard" && <Dashboard user={user} data={data} greeting={greeting} tasks={allTasks} onNavigate={setView} onRefresh={refresh} onFlash={flash} />}
+        {view === "tasks" && <Tasks tasks={allTasks} onRefresh={refresh} onFlash={flash} onQueueTask={queueTask} onSyncTasks={syncPendingTasks} mutations={taskMutations} syncing={syncingTasks} syncError={syncError} syncMessage={syncMessage} online={online} />}
         {view === "routines" && <Routines routines={data.routines} today={dashboard?.today} onRefresh={refresh} onFlash={flash} />}
         {view === "history" && <HistoryPage />}
         {view === "friends" && <Friends friends={data.friends} followers={data.followers} counts={data.connectionCounts} onRefresh={refresh} onFlash={flash} onOpenProfile={openSocialProfile} />}
@@ -285,18 +433,41 @@ function Dashboard({ user, data, greeting, tasks, onNavigate, onRefresh, onFlash
   </div>;
 }
 
-function Tasks({ tasks, onRefresh, onFlash }) {
+function Tasks({ tasks, onRefresh, onFlash, onQueueTask, onSyncTasks, mutations, syncing, syncError, syncMessage, online }) {
   const [draft, setDraft] = useState({ title: "", deadline: "", priority: "medium" });
   const pending = tasks.filter((task) => task.status === "pending");
   const complete = tasks.filter((task) => task.status === "completed");
   const addTask = async (event) => {
     event.preventDefault();
-    try { await request("/tasks", json("POST", draft)); setDraft({ title: "", deadline: "", priority: "medium" }); onRefresh(); onFlash("Task added to your list."); }
+    try {
+      await onQueueTask(draft);
+      setDraft({ title: "", deadline: "", priority: "medium" });
+      onFlash(online ? "Task saved. Syncing now." : "Task saved on this device. It will sync when you're online.");
+    }
     catch (error) { onFlash(error.message); }
   };
   const update = async (task, patch) => { try { await request(`/tasks/${task._id}`, json("PATCH", patch)); onRefresh(); } catch (error) { onFlash(error.message); } };
-  const renderTask = (task) => <div className={`task-card ${task.status === "completed" ? "finished" : ""}`} key={task._id}><button className={`task-check ${task.status === "completed" ? "done" : ""}`} onClick={() => update(task, { status: task.status === "completed" ? "pending" : "completed" })}>{task.status === "completed" && <Check size={15} />}</button><div className="task-card-copy"><strong>{task.title}</strong>{task.description && <p>{task.description}</p>}<small>{task.deadline ? `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : "No deadline"}</small></div><select className={`priority-select ${task.priority}`} aria-label="Task priority" value={task.priority} onChange={(e) => update(task, { priority: e.target.value })}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select><button className="icon-button quiet" aria-label="Delete task" onClick={async () => { try { await request(`/tasks/${task._id}`, { method: "DELETE" }); onRefresh(); } catch (error) { onFlash(error.message); } }}><X size={15} /></button></div>;
-  return <><PageTitle eyebrow="YOUR FOCUS" title="Tasks that move you forward." subtitle="A clear list turns good intentions into small, doable steps." /><form className="task-create panel" onSubmit={addTask}><div className="create-input"><Plus size={18} /><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="What's one thing you want to get done?" required maxLength={160} /></div><input type="date" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} aria-label="Deadline" /><select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></select><button className="button primary"><Plus size={15} /> Add task</button></form><div className="task-columns"><section><div className="list-title"><span className="list-marker orange" /><h3>In progress</h3><span className="count-badge">{pending.length}</span></div>{pending.length ? pending.map(renderTask) : <div className="panel empty-state"><CheckCheck size={22} /><strong>Nothing on your plate.</strong><span>Add a task above or ask your AI assistant to help plan.</span></div>}</section><section><div className="list-title"><span className="list-marker green" /><h3>Completed</h3><span className="count-badge">{complete.length}</span></div>{complete.length ? complete.map(renderTask) : <div className="panel empty-state"><span>Your finished tasks will show up here.</span></div>}</section></div></>;
+  const renderTask = (task) => {
+    const local = Boolean(task.localSyncState && task.localSyncState !== "synced");
+    const syncLabel = {
+      pending: "Pending sync",
+      syncing: "Syncing…",
+      failed: "Sync failed — retry below",
+      synced: "Synced",
+    }[task.localSyncState];
+    return <div className={`task-card ${task.status === "completed" ? "finished" : ""}`} key={task._id}>
+      <button type="button" className={`task-check ${task.status === "completed" ? "done" : ""}`} disabled={local} aria-label={task.status === "completed" ? "Completed" : "Task pending"} onClick={() => update(task, { status: task.status === "completed" ? "pending" : "completed" })}>{task.status === "completed" && <Check size={15} />}</button>
+      <div className="task-card-copy"><strong>{task.title}</strong>{task.description && <p>{task.description}</p>}<small>{syncLabel && <span className={`offline-task-status ${task.localSyncState}`} role="status">{syncLabel} · </span>}{task.deadline ? `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}` : "No deadline"}</small></div>
+      <select className={`priority-select ${task.priority}`} aria-label="Task priority" value={task.priority} disabled={local} onChange={(e) => update(task, { priority: e.target.value })}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+      <button type="button" className="icon-button quiet" aria-label="Delete task" disabled={local} onClick={async () => { try { await request(`/tasks/${task._id}`, { method: "DELETE" }); onRefresh(); } catch (error) { onFlash(error.message); } }}><X size={15} /></button>
+    </div>;
+  };
+  const pageAction = mutations.length > 0 && <button type="button" className="button subtle task-sync-button" onClick={onSyncTasks} disabled={!online || syncing}><RefreshCw size={14} className={syncing ? "sync-spinner" : ""} />{syncing ? "Syncing…" : `Sync now (${mutations.length})`}</button>;
+  return <>
+    <PageTitle eyebrow="YOUR FOCUS" title="Tasks that move you forward." subtitle="A clear list turns good intentions into small, doable steps." action={pageAction} />
+    {(syncError || syncMessage || !online && mutations.length > 0) && <div className={`task-sync-status ${syncError ? "has-error" : ""}`} role={syncError ? "alert" : "status"} aria-live="polite">{syncError || syncMessage || `${mutations.length} task${mutations.length === 1 ? "" : "s"} waiting to sync when you're online.`}</div>}
+    <form className="task-create panel" onSubmit={addTask}><div className="create-input"><Plus size={18} /><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="What's one thing you want to get done?" required maxLength={160} /></div><input type="date" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} aria-label="Deadline" /><select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}><option value="high">High priority</option><option value="medium">Medium priority</option><option value="low">Low priority</option></select><button className="button primary"><Plus size={15} /> Add task</button></form><div className="task-columns"><section><div className="list-title"><span className="list-marker orange" /><h3>In progress</h3><span className="count-badge">{pending.length}</span></div>{pending.length ? pending.map(renderTask) : <div className="panel empty-state"><CheckCheck size={22} /><strong>Nothing on your plate.</strong><span>Add a task above or ask your AI assistant to help plan.</span></div>}</section><section><div className="list-title"><span className="list-marker green" /><h3>Completed</h3><span className="count-badge">{complete.length}</span></div>{complete.length ? complete.map(renderTask) : <div className="panel empty-state"><span>Your finished tasks will show up here.</span></div>}</section></div>
+  </>;
 }
 
 const calendarDateKey = (date) =>

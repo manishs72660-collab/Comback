@@ -8,6 +8,7 @@ const mongoose = require("mongoose");
 const redisClient = require("./config/redis");
 const connectMongo = require("./config/db");
 const Notification = require("./models/Notification.models");
+const Task = require("./models/Task.models");
 const { corsOptions } = require("./config/cors");
 
 const authRouter = require("./routes/auth.routes");
@@ -28,7 +29,7 @@ const connectServices = () => {
     connectionPromise = Promise.all([
       mongoose.connection.readyState === 1 ? Promise.resolve() : connectMongo(),
       redisClient.isReady ? Promise.resolve() : redisClient.connect(),
-    ]).then(() => Notification.createIndexes()).catch((error) => {
+    ]).then(() => Promise.all([Notification.createIndexes(), Task.createIndexes()])).catch((error) => {
       connectionPromise = null;
       throw error;
     });

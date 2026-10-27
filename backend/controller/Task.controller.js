@@ -3,18 +3,34 @@ const Task = require("../models/Task.models.js");
 
 const createTask = async (req, res) => {
   try {
-    const { title, description = "", deadline = null, priority = "medium", scheduledAt = "" } = req.body;
+    const { title, description = "", deadline = null, priority = "medium", scheduledAt = "", clientMutationId, expectedAccountId } = req.body;
     if (typeof title !== "string" || !title.trim()) return res.status(400).json({ success: false, message: "Task title is required" });
     if (!["low", "medium", "high"].includes(priority)) return res.status(400).json({ success: false, message: "Invalid priority" });
     if (deadline && Number.isNaN(Date.parse(deadline))) return res.status(400).json({ success: false, message: "Invalid deadline" });
-    const task = await Task.create({
-      userId: req.user._id,
-      title: title.trim(),
-      description: String(description).slice(0, 1000),
-      deadline: deadline || null,
-      priority,
-      scheduledAt: String(scheduledAt).slice(0, 80),
-    });
+    if (expectedAccountId !== undefined && (typeof expectedAccountId !== "string" || expectedAccountId !== String(req.user._id))) {
+      return res.status(409).json({ success: false, message: "The active account does not match the queued task. Sign in to the original account to sync it." });
+    }
+    if (clientMutationId !== undefined && (typeof clientMutationId !== "string" || !clientMutationId.trim() || clientMutationId.length > 80)) {
+      return res.status(400).json({ success: false, message: "Invalid client mutation id" });
+    }
+    let task;
+    try {
+      task = await Task.create({
+        userId: req.user._id,
+        title: title.trim(),
+        description: String(description).slice(0, 1000),
+        deadline: deadline || null,
+        priority,
+        scheduledAt: String(scheduledAt).slice(0, 80),
+        ...(clientMutationId ? { clientMutationId: clientMutationId.trim() } : {}),
+      });
+    } catch (error) {
+      if (error.code === 11000 && clientMutationId) {
+        task = await Task.findOne({ userId: req.user._id, clientMutationId: clientMutationId.trim() });
+        if (task) return res.status(200).json({ success: true, task });
+      }
+      throw error;
+    }
     res.status(201).json({ success: true, task });
   } catch (error) {
     console.error("Create task error:", error);

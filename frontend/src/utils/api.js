@@ -7,20 +7,31 @@ export const API = pointsToFrontend
   ? productionApi
   : configuredApi || (import.meta.env.DEV ? "http://localhost:3000" : productionApi);
 
+const fetchApi = async (url, options) => {
+  try {
+    const response = await fetch(url, options);
+    window.dispatchEvent(new Event("comeback:network-restored"));
+    return response;
+  } catch (error) {
+    window.dispatchEvent(new Event("comeback:network-error"));
+    throw error;
+  }
+};
+
 export async function request(path, options = {}, canRefresh = true) {
   const isForm = options.body instanceof FormData;
   const headers = {
     ...(options.body && !isForm ? { "Content-Type": "application/json" } : {}),
     ...options.headers,
   };
-  const response = await fetch(`${API}${path}`, {
+  const response = await fetchApi(`${API}${path}`, {
     credentials: "include",
     ...options,
     headers,
   });
 
   if (response.status === 401 && canRefresh && !["/auth/login", "/auth/register", "/auth/refresh"].includes(path)) {
-    const refreshed = await fetch(`${API}/auth/refresh`, { method: "POST", credentials: "include" });
+    const refreshed = await fetchApi(`${API}/auth/refresh`, { method: "POST", credentials: "include" });
     if (refreshed.ok) return request(path, options, false);
   }
 

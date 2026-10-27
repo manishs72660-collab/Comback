@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ArrowRight, ArrowUpRight, Check, Palette, Play, Sparkles, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Palette, Play, Sparkles, Wifi, WifiOff, X } from "lucide-react";
 import BrandLogo from "../components/BrandLogo";
+import { PwaInstallButton, usePwa } from "../components/PwaProvider";
 import { colorThemes, saveColorTheme, validTheme } from "../utils/themes";
 
 const highlights = [
@@ -43,6 +44,7 @@ function FloatingCards() {
 }
 
 export default function LandingPage({ onAuth }) {
+  const { online } = usePwa();
   const [colorTheme, setColorTheme] = useState(() => {
     const savedTheme = window.localStorage.getItem("comeback-theme") || document.documentElement.dataset.theme;
     return validTheme(savedTheme) ? savedTheme : "orange";
@@ -92,7 +94,7 @@ export default function LandingPage({ onAuth }) {
         <div className="feature-grid">{highlights.map(({ number, title, copy }) => <article className="feature-item glass-feature" key={number}><span>{number}</span><h3>{title}</h3><p>{copy}</p><span className="feature-corner" aria-hidden="true">↗</span></article>)}</div>
       </section>
       <section className="landing-last-call"><span className="eyebrow">YOU CAN BEGIN RIGHT WHERE YOU ARE</span><h2>One small step is <em>enough.</em></h2><button className="button landing-cta large" onClick={() => onAuth("register")}>Make a fresh start <ArrowRight size={16} /></button></section>
-      <footer className="landing-footer"><BrandLogo compact /><p>Come back to what matters.</p><button onClick={() => onAuth("login")}>Already have an account? Log in <ArrowUpRight size={14} /></button></footer>
+      <footer className="landing-footer"><BrandLogo compact /><p>Come back to what matters.</p><span className={`pwa-network-status landing-network-status ${online ? "online" : "offline"}`} role="status">{online ? <Wifi size={13} /> : <WifiOff size={13} />}<span>{online ? "Online" : "Offline"}</span></span><PwaInstallButton className="landing-install-button" /><button onClick={() => onAuth("login")}>Already have an account? Log in <ArrowUpRight size={14} /></button></footer>
     </main>
   );
 }
