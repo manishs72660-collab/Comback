@@ -21,35 +21,38 @@ const generateRefreshToken = (userId, jti) =>
 
 // ================= COOKIES =================
 
-const cookieBase = () => {
-  const isProduction = process.env.NODE_ENV === "production";
+const cookieBase = (req) => {
+  const forwardedProtocol = req.get("x-forwarded-proto")?.split(",")[0].trim();
+  const isSecure = process.env.NODE_ENV === "production"
+    || forwardedProtocol === "https"
+    || req.secure;
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: isProduction ? "none" : "lax",
+    secure: isSecure,
+    sameSite: isSecure ? "none" : "lax",
   };
 };
 
-const setAuthCookies = (res, accessToken, refreshToken) => {
+const setAuthCookies = (req, res, accessToken, refreshToken) => {
   res.cookie("accessToken", accessToken, {
-    ...cookieBase(),
+    ...cookieBase(req),
     maxAge: 15 * 60 * 1000,
   });
   res.cookie("refreshToken", refreshToken, {
-    ...cookieBase(),
+    ...cookieBase(req),
     maxAge: REFRESH_TTL * 1000,
   });
 };
 
 // Must use the same options as when the cookie was set,
 // otherwise browsers ignore the clear in production (sameSite none).
-const clearAuthCookies = (res) => {
-  res.clearCookie("accessToken", cookieBase());
-  res.clearCookie("refreshToken", cookieBase());
+const clearAuthCookies = (req, res) => {
+  res.clearCookie("accessToken", cookieBase(req));
+  res.clearCookie("refreshToken", cookieBase(req));
 };
 
 // Creates a new session: tokens + redis entry + cookies
-const issueSession = async (res, userId) => {
+const issueSession = async (req, res, userId) => {
   const accessJti = crypto.randomUUID();
   const refreshJti = crypto.randomUUID();
 
@@ -58,7 +61,7 @@ const issueSession = async (res, userId) => {
 
   await redisClient.set(`session:${refreshJti}`, userId, { EX: REFRESH_TTL });
 
-  setAuthCookies(res, accessToken, refreshToken);
+  setAuthCookies(req, res, accessToken, refreshToken);
 };
 
 const publicUser = (user) => ({
@@ -89,7 +92,7 @@ const register = async (req, res) => {
 
     const user = await User.create({ name, email, password: hashedPassword });
 
-    await issueSession(res, user._id.toString());
+    await issueSession(req, res, user._id.toString());
 
     return res.status(201).json({
       success: true,
@@ -127,7 +130,7 @@ const login = async (req, res) => {
       });
     }
 
-    await issueSession(res, user._id.toString());
+    await issueSession(req, res, user._id.toString());
 
     return res.status(200).json({
       success: true,
@@ -161,7 +164,7 @@ const refresh = async (req, res) => {
     try {
       decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
     } catch (error) {
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return res.status(401).json({
         success: false,
         message: "Invalid or expired refresh token",
@@ -169,7 +172,7 @@ const refresh = async (req, res) => {
     }
 
     if (decoded.type !== "refresh") {
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return res.status(401).json({
         success: false,
         message: "Invalid refresh token",
@@ -180,7 +183,7 @@ const refresh = async (req, res) => {
     const storedUserId = await redisClient.get(`session:${decoded.jti}`);
 
     if (!storedUserId || storedUserId !== decoded.userId) {
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return res.status(401).json({
         success: false,
         message: "Session expired. Please login again",
@@ -190,7 +193,7 @@ const refresh = async (req, res) => {
     const user = await User.findById(decoded.userId);
     if (!user) {
       await redisClient.del(`session:${decoded.jti}`);
-      clearAuthCookies(res);
+      clearAuthCookies(req, res);
       return res.status(401).json({
         success: false,
         message: "User not found",
@@ -199,7 +202,7 @@ const refresh = async (req, res) => {
 
     // Rotate: old refresh session is removed, a new one is created
     await redisClient.del(`session:${decoded.jti}`);
-    await issueSession(res, user._id.toString());
+    await issueSession(req, res, user._id.toString());
 
     return res.status(200).json({
       success: true,
@@ -260,7 +263,7 @@ const logout = async (req, res) => {
       }
     }
 
-    clearAuthCookies(res);
+    clearAuthCookies(req, res);
 
     return res.status(200).json({
       success: true,

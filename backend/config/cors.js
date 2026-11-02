@@ -1,8 +1,10 @@
 const allowedOrigins = [
   "http://localhost:5173",
   "https://comback-eight.vercel.app",
-  process.env.CLIENT_URL,
-].filter(Boolean);
+  ...(process.env.CLIENT_URL || "").split(","),
+]
+  .map((origin) => origin.trim().replace(/\/$/, ""))
+  .filter(Boolean);
 
 const corsOptions = {
   origin: (origin, callback) => {
