@@ -15,7 +15,7 @@ const corsOptions = {
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 204,
-  maxAge: 86400,
+  maxAge: 300,
 };
 
 module.exports = { corsOptions };
