@@ -36,10 +36,10 @@ export default function AuthPage({ initialMode = "login", onBack, onAuth }) {
         <span className="eyebrow">{isRegister ? "A FRESH START" : "WELCOME BACK"}</span>
         <h2>{isRegister ? "Begin your next chapter." : "Good to see you again."}</h2>
         <p className="muted">{isRegister ? "Let's make a little room for what matters." : "Your routines and plans are right where you left them."}</p>
-        {isRegister && <label>Your name<input required maxLength="80" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Alex Morgan" /></label>}
-        <label>Email address<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" /></label>
-        <label>Password<input required minLength="6" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="At least 6 characters" /></label>
-        {error && <p className="form-error">{error}</p>}
+        {isRegister && <label>Your name<input required maxLength="80" autoComplete="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Alex Morgan" /></label>}
+        <label>Email address<input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" /></label>
+        <label>Password<input required minLength="6" type="password" autoComplete={isRegister ? "new-password" : "current-password"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="At least 6 characters" /></label>
+        {error && <p className="form-error" role="alert">{error}</p>}
         <button className="button primary full" disabled={busy}>{busy ? "One moment…" : isRegister ? "Create your account" : "Sign in"} <ArrowRight size={16} /></button>
         <p className="switch-auth">{isRegister ? "Already have a space here?" : "New to Comeback?"} <button type="button" onClick={() => { setMode(isRegister ? "login" : "register"); setError(""); }}>{isRegister ? "Log in" : "Create an account"}</button></p>
       </form>

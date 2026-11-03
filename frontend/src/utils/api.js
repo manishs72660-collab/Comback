@@ -18,6 +18,20 @@ const fetchApi = async (url, options) => {
   }
 };
 
+let refreshPromise;
+
+const refreshAuth = () => {
+  if (!refreshPromise) {
+    refreshPromise = fetchApi(`${API}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    }).finally(() => {
+      refreshPromise = undefined;
+    });
+  }
+  return refreshPromise;
+};
+
 export async function request(path, options = {}, canRefresh = true) {
   const isForm = options.body instanceof FormData;
   const headers = {
@@ -31,7 +45,7 @@ export async function request(path, options = {}, canRefresh = true) {
   });
 
   if (response.status === 401 && canRefresh && !["/auth/login", "/auth/register", "/auth/refresh"].includes(path)) {
-    const refreshed = await fetchApi(`${API}/auth/refresh`, { method: "POST", credentials: "include" });
+    const refreshed = await refreshAuth();
     if (refreshed.ok) return request(path, options, false);
   }
 

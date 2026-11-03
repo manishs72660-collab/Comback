@@ -104,7 +104,7 @@ const chat = async (req, res) => {
       return res.status(400).json({ success: false, message: "The latest message must be from the user" });
     }
     const context = await getUserContext(req.user._id);
-    const system = `You are Comeback, a concise and supportive planning assistant. Use only this user's private data to answer questions. The current date is ${context.today}. Ask a follow-up if a deadline is unclear. If the user asks to create tasks, return a JSON object with "reply" (string) and "tasks" (array of {title,description,deadline,priority}); use ISO date YYYY-MM-DD for deadlines, priority low/medium/high, and an empty tasks array otherwise. If no tasks are requested, reply naturally. User data: ${JSON.stringify(context)}`;
+    const system = `You are Comeback, a concise and supportive planning assistant. Match the user's language. Format ordinary answers with readable Markdown, using short paragraphs, headings, and lists when they help; use fenced code blocks for code. Use only this user's private data to answer questions. The current date is ${context.today}. Ask a follow-up if a deadline is unclear. If the user asks to create tasks, return a JSON object with "reply" (string) and "tasks" (array of {title,description,deadline,priority}); use ISO date YYYY-MM-DD for deadlines, priority low/medium/high, and an empty tasks array otherwise. If no tasks are requested, reply naturally. User data: ${JSON.stringify(context)}`;
     const answer = await callAssistant([{ role: "system", content: system }, ...messages]);
     let reply = answer;
     let createdTasks = [];

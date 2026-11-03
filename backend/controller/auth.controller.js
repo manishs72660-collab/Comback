@@ -6,6 +6,7 @@ const User = require("../models/user.models.js");
 const redisClient = require("../config/redis.js");
 
 const REFRESH_TTL = 7 * 24 * 60 * 60; // seconds
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ================= TOKENS =================
 
@@ -78,9 +79,19 @@ const publicUser = (user) => ({
 
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
+    const normalizedName = typeof name === "string" ? name.trim() : "";
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
-    const existingUser = await User.findOne({ email });
+    if (!normalizedName || normalizedName.length > 80 || !EMAIL_PATTERN.test(normalizedEmail)
+      || normalizedEmail.length > 254 || typeof password !== "string" || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid name and email, and a password of at least 6 characters",
+      });
+    }
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -90,7 +101,7 @@ const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    const user = await User.create({ name, email, password: hashedPassword });
+    const user = await User.create({ name: normalizedName, email: normalizedEmail, password: hashedPassword });
 
     await issueSession(req, res, user._id.toString());
 
@@ -100,6 +111,12 @@ const register = async (req, res) => {
       user: publicUser(user),
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "An account with this email already exists",
+      });
+    }
     console.error("Register Error:", error);
     return res.status(500).json({
       success: false,
@@ -112,9 +129,18 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
-    const user = await User.findOne({ email });
+    if (!EMAIL_PATTERN.test(normalizedEmail) || normalizedEmail.length > 254
+      || typeof password !== "string" || !password.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid email address and password",
+      });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({
         success: false,
